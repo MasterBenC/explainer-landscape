@@ -1,0 +1,81 @@
+{
+  "canvas": {"w": 1920, "h": 1080, "fps": 30},
+  "title": "示例：极简档（只留章节牌 + 字幕，图源收进片尾）",
+  "chrome": "minimal",
+  "scenes": [
+    {
+      "id": "m01",
+      "dur": 6.0,
+      "form": "photo",
+      "depth": "bg",
+      "bg": "media/archive-card.png",
+      "scrim": [0.0, 0.62],
+      "archival": {"desat": 0.55, "warm": 1.05, "dark": 0.03},
+      "chapter": "线索一·第一张一卡通",
+      "subtitle": "1996 年，解放路，第一张卡发出去的时候没有人排队",
+      "disclaimer": false,
+      "slots": {
+        "caption": "1996 年 · 解放路营业厅",
+        "credit": "图：示例占位 · 1996-04-18"
+      },
+      "transition": {"type": "cut", "duration": 0}
+    },
+    {
+      "id": "m02",
+      "dur": 6.0,
+      "form": "chart",
+      "title": "越跳越快",
+      "subtitle": "从 1000 亿到 3000 亿，用时 19 年，然后 7 年，然后 4 年",
+      "disclaimer": false,
+      "slots": {
+        "kind": "bar",
+        "chart_title": "每次跨越用时（年）",
+        "data": [
+          {"name": "1000亿", "label": "19", "value": 19},
+          {"name": "3000亿", "label": "7", "value": 7},
+          {"name": "1万亿", "label": "4", "value": 4, "highlight": true}
+        ],
+        "source_note": "单位：年"
+      },
+      "transition": {"type": "fade", "duration": 0.4}
+    },
+    {
+      "id": "m03",
+      "dur": 7.0,
+      "form": "list",
+      "chapter": "线索二·三次换道",
+      "subtitle": "每一次换道，都是在旧业务还赚钱的时候动的",
+      "disclaimer": false,
+      "slots": {
+        "items": [
+          {"n": "01", "text": "一卡通之后做信用卡"},
+          {"n": "02", "text": "信用卡之后做财富管理"},
+          {"n": "03", "text": "财富管理之后做 App"}
+        ]
+      },
+      "beats": [0.4, 2.2, 4.0],
+      "transition": {"type": "cut", "duration": 0}
+    },
+    {
+      "id": "m04",
+      "dur": 7.0,
+      "form": "sources",
+      "subtitle": "这些数字都能在年报里翻到，出处列在右边",
+      "disclaimer": false,
+      "slots": {
+        "closing": "不是运气。\n是三次换道",
+        "blocks": [
+          {
+            "title": "参考报道与资料",
+            "lines": [
+              "招商银行年报（1996–2026）",
+              "金融棒棒糖：CASE 01 拆解（2026-10）",
+              "中国人民银行支付体系运行报告（2025）"
+            ]
+          }
+        ]
+      },
+      "transition": {"type": "cut", "duration": 0}
+    }
+  ]
+}

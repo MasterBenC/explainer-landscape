@@ -1,6 +1,6 @@
 display-name-zh: 横版解说片模板
 display-name-en: Landscape Explainer Template
-version: 0.2.0
+version: 0.3.0
 tag-cn: 视频制作
 tag-en: Video
 complete-tags-cn:
@@ -11,17 +11,19 @@ complete-tags-en:
 - Video / Layout Template
 - Video / Explainer
 - Video / Motion Graphics
-summary-cn: 把选题或口播稿做成 16:9「档案式」商业/财经解说画面：八种版式（巨数字卡、双栏证据、逐条揭示、时间轴对比、关系图、结尾来源清单、数据图、图片镜），两档 chrome（档案档＝页眉日期戳/来源行/时间码；极简档＝只留章节牌与字幕、图源收进片尾来源页），参数由一条 4:17 的财经调查片逐镜测量得到，并用两期真实成片（30fps / 44 镜）回灌修正。
-summary-en: Turn a topic or narration script into a 16:9 "dossier-style" business explainer — eight layouts (bignum, evidence, progressive list, timeline, relation map, sources, chart, photo) and two chrome presets (full: datestamp, source line, timecode / minimal: chapter plate + subtitles only, sources moved to a closing page). Parameters measured shot-by-shot from a 4'17" finance investigation video, then corrected against two real 30 fps, 44-shot films.
+summary-cn: 把选题或口播稿做成 16:9「档案式」商业/财经解说画面：八种版式（巨数字卡、双栏证据、逐条揭示、时间轴对比、关系图、结尾来源清单、数据图、图片镜），两档 chrome（档案档＝页眉日期戳/来源行/时间码；极简档＝只留章节牌与字幕、图源收进片尾来源页），参数由一条 4:17 的财经调查片逐镜测量得到，并用两期真实成片（30fps / 44 镜）回灌修正。适用于横版解说片、中视频、B站/YouTube 深度解说、信息流图表视频、口播配画面的分镜。
+summary-en: Turn a topic or narration script into a 16:9 "dossier-style" business explainer — eight layouts (bignum, evidence, progressive list, timeline, relation map, sources, chart, photo) and two chrome presets (full = datestamp, source line, timecode / minimal = chapter plate + subtitles only, sources moved to a closing page). Parameters measured shot-by-shot from a 4'17" finance investigation video, then corrected against two real 30 fps, 44-shot films. For landscape explainers, mid-length YouTube/Bilibili deep dives, chart-led news videos, and shot lists for narration-driven footage.
 desc-cn: >-
   面向做横版商业、财经、科技解读的创作者。输入一个选题或口播稿，输出可直接渲染的分镜
   spec：八种版式按"这句话在干什么"选（一个数字用巨数字卡、一处引述用双栏证据、三个原因
   用逐条揭示、前后变化用时间轴、谁和谁有关用关系图、收尾用来源清单、数据用柱/线/环/KPI
-  直接画、现场用图片镜直接看），配固定 chrome 与动效节奏。参数不是拍脑袋：底色 #07080A、
+  直接画、现场用图片镜直接看），配固定 chrome 与动效节奏。命中场景：横版解说片、中视频、
+  B站/YouTube 深度解说、商业拆解、财经调查、信息流图表视频、口播配画面的分镜、档案式纪录片
+  版式，以及"这条解说视频的画面怎么做"。参数不是拍脑袋：底色 #07080A、
   强调红 #E0322C 单帧用量 <2%、左边距 134px、字幕 54px、每分钟 11 刀、硬切占 50%、
   出现 0.40s / 替换 0.45s / 消失 0.20s，都来自对 48 个镜头的测量。附渲染器（Pillow 出静帧、
-  逐条揭示片段与数据图/图片镜）与自检脚本。只负责画面；BGM、字幕文案、口播录制不在范围内。
-  不适用于竖屏短视频（用 koubo-animation-pipeline）、纯混剪、产品广告。
+  分镜片段与整片，转场片内合成）与自检脚本（结构 + 像素两级）。只负责画面；BGM、字幕文案、
+  口播录制不在范围内。不适用于竖屏短视频（用 koubo-animation-pipeline）、纯混剪、产品广告。
 desc-en: >-
   For creators making landscape business, finance, and tech explainers. Given a topic or
   narration script, it produces a renderable shot spec: eight layouts chosen by what the
@@ -31,10 +33,12 @@ desc-en: >-
   chrome and motion pacing. Every parameter is measured from 48 shots of a real 4'17"
   investigation video: #07080A background, #E0322C accent under 2% of any frame, 134px left
   margin, 54px subtitles, 11 cuts per minute, 50% hard cuts, 0.40s appear / 0.45s change /
-  0.20s disappear. Ships a Pillow renderer (stills, progressive-reveal clips, charts and
-  photo layouts) and an audit script. Visuals only: BGM, subtitle copy, and voice recording
-  are out of scope. Not for vertical shorts (use koubo-animation-pipeline), pure montage, or
-  product ads.
+  0.20s disappear. Ships a Pillow renderer (stills, per-shot clips, and full film with
+  transitions composited in-process) and an audit script (structure + pixels). Trigger
+  cases: landscape explainers, mid-length deep dives (YouTube/Bilibili), business breakdowns,
+  finance investigations, chart-led news videos, shot lists for narration-driven footage.
+  Visuals only: BGM, subtitle copy, and voice recording are out of scope. Not for vertical
+  shorts (use koubo-animation-pipeline), pure montage, or product ads.
 author-cn: 拆解师Ben
 author-en: Ben
 source: community

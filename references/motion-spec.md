@@ -15,37 +15,86 @@
 
 结论：**短、硬、频繁**。不是"整屏淡入"，是"一条一条换"。
 
-## 三种基本动作
+## 三种基本动作（设计语言）
 
-| 动作 | 用什么 | 时长 | 缓动 | 实现 |
-|---|---|---|---|---|
-| `appear` | 新元素从下方 12px 淡入 + 透明度 0→1 | 0.40s | `ease_out` | `opacity` + `translateY(12px→0)` |
-| `change` | 旧值淡出同时新值淡入（交叉 0.2s），位置不动 | 0.45s | `ease_in_out` | 两层叠放，交叉 `opacity` |
-| `disappear` | 透明度 1→0，不位移 | 0.20s | `linear` | `opacity` |
+| 动作 | 观感 | 时长 | 缓动 |
+|---|---|---|---|
+| `appear` | 新元素从下方 12px 淡入 / 或遮罩刷出 | 0.40s | `out` |
+| `change` | 旧值淡出同时新值淡入（位置不动） | 0.45s | `in_out` |
+| `disappear` | 透明度 1→0，不位移 | 0.20s | `linear` |
 
 `instant` 用在"档案翻页"式硬出现：截图、章节牌、日期戳直接闪入，不做过渡。原片里三分之一的元素是这种硬出现——这是这套风格的节奏来源，不要全改成柔和动画。
 
-## 动效语法
+**渲染器实现到哪一步（照实写，别按设计语言脑补）：**
+
+- `appear`：完整支持（遮罩揭示 / 抬起 + 淡入由版式决定）。
+- `change`（同一位置换值）：**未实现**。`motion` 里同一个 `item` 写两次，后一条会覆盖前一条，
+  不会产生"先出再换"。要换值就拆成两镜，或在剪辑软件里叠。
+- `disappear`：**未实现**。元素一旦出现就留到本镜结束；"讲过的条目降透明度"也没有实现。
+- `spring` / overshoot：`render.py` 里有 `spring()` 函数，但**没有任何版式调用它**，写了也不生效。
+
+## 动效语法（实际字段）
 
 ```json
 "motion": [
-  {"item": "num",     "at": 0.0,  "kind": "appear", "easing": "ease_out",    "dur": 0.40},
-  {"item": "caption", "at": 0.6,  "kind": "appear", "easing": "ease_out",    "dur": 0.40},
-  {"item": "note",    "at": 1.4,  "kind": "appear", "easing": "instant",     "dur": 0.00},
-  {"item": "num",     "at": 6.2,  "kind": "change", "easing": "ease_in_out", "dur": 0.45},
-  {"item": "caption", "at": 6.4,  "kind": "disappear", "easing": "linear",   "dur": 0.20}
+  {"item": "number",  "at": 0.0, "dur": 0.0,  "ease": "instant"},
+  {"item": "caption", "at": 0.6, "dur": 0.40, "ease": "out"},
+  {"item": "note",    "at": 1.4, "dur": 0.0,  "ease": "instant"}
 ]
 ```
 
-`at` 是相对本镜起点的秒数，不是全局时间。`item` 对应槽位名，`list` 版式用 `item: "items[1]"`。
+| 键 | 必填 | 默认 | 取值 |
+|---|---|---|---|
+| `item` | ✅ | — | 见下面的 item 表；拼错会**静默绑空**，元素停在默认状态 |
+| `at` | — | 0 | 相对本镜起点的秒数（不是全局时间） |
+| `dur` | — | 0.4 | 0 表示硬切（等价于 `instant`） |
+| `ease` | — | `out` | `out` / `in_out` / `instant` / `linear` |
 
-## 逐条揭示的节奏
+**不认的键**：`easing`、`kind`、`start`、`delay`、`opacity`、`translateY`。写了不报错，但不会生效
+——这是这套 spec 最坑的地方，`audit.py` 会把它们标出来。
 
-`list` / `relation` / `timeline` 的条目要跟着旁白走：
+**`ease` 只认上面四个值。** 写 `ease_out` / `ease_in_out` 不会报错，但会退化成 `linear`（匀速）。
 
-- 条目出现间隔 1.2–2.4 秒，和念到那条的起音对齐（±0.15s 内听不出来）。
-- 正在讲的条目全白 + accent 竖线；讲过的降到 0.55 不透明度；没讲的不出现。
-- 一镜里最多揭示 4 条；第 5 条说明该拆镜了。
+### 各版式可用的 item
+
+| 版式 | item |
+|---|---|
+| 所有版式 | `chapter` / `title` / `kicker` / `subtitle` / `source` / `tc` / `strap` |
+| `bignum` | `number` / `caption` / `note` |
+| `evidence` | `image` / `attrib` |
+| `list` | `items[0]`…`items[n]` / `media` |
+| `timeline` | `points[0]`… / `delta` |
+| `relation` | `center` / `satellites[0]`… |
+| `sources` | `closing` / `blocks` |
+| `chart` | `chart` |
+| `photo` | `image` / `caption` |
+| 有 `callouts` 时 | `callout[0]`… |
+
+注意巨数字卡的槽位叫 **`number`**，不是 `num`（旧文档写错过，照抄会静默失效）。
+
+### 写了 motion 就不再自动排
+
+`render.py` 的逻辑是 `sc["motion"] or auto_motion(sc)`：只要写了**非空** `motion`，自动排布就整体失效
+（`"motion": []` 是空数组，等价于没写，仍会走自动排布）。所以**要么全写，要么全不写**。
+没写进 `motion` 的元素按各自默认值出现：
+
+- 标题类（`title` / `chapter` / `subtitle` / `source` / `tc` / `strap` / `kicker`）默认**可见**；
+- 逐条类（`items[i]` / `points[i]` / `satellites[i]` / `callout[i]`）默认**不可见**（0.0）——
+  漏写就永远不出现，这就是"动效不出现"最常见的原因。
+
+## 不写 motion 时的自动排布
+
+章节牌 0s、标题 0.12s、主体 0.3–0.35s；逐条从 0.45s 起、每条 +0.55s。够用，但和台词对不齐。
+
+## 跟台词走：`beats`
+
+```json
+"beats": [0.4, 2.4, 4.4]
+```
+
+给了 `beats` 就把"按顺序出场的元素"逐条挂到这些时刻上（多出来的元素每次 +0.6s）。
+`list` / `relation` / `timeline` 最需要它——条目出现间隔 1.2–2.4 秒，和念到那条的起音对齐
+（±0.15s 内听不出来）。一镜里最多揭示 4 条；第 5 条说明该拆镜了。
 
 ## 镜头内节拍（不切镜）
 
@@ -55,9 +104,32 @@
 2. 换完留 0.8–1.5 秒静止，让观众读完。
 3. 再换下一个。
 
-一个 20 秒的长镜，通常由 4–6 个这样的节拍组成。
+一个 20 秒的长镜，通常由 4–6 个这样的节拍组成。因为渲染器不支持 `change` / `disappear`，
+真正要"换掉"旧内容时，**拆镜**比在镜头里硬换更稳。
 
 ## 转场
+
+写在 **scene 级**，字段名是 `transition`，结构 `{"type": ..., "duration": ...}`：
+
+```json
+{"id": "s02", "dur": 4.0, "form": "evidence",
+ "transition": {"type": "fade", "duration": 0.5},
+ "slots": { ... }}
+```
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `transition.type` | `cut` | `cut` / `fade` / `dissolve` / `wipe` / `blur` |
+| `transition.duration` | 0 | 秒；`cut` 时忽略；必须 **小于本镜 `dur`** |
+
+行为：
+
+- 转场吃的是**前一镜的尾部**，`--video` 输出总时长仍等于 Σ`dur`；
+- `fade` 和 `blur` 都渲成黑场过渡（`blur` 只是语义别名）；
+- `dissolve` 是两镜直接叠化，`wipe` 从左往右揭开；
+- 字幕和标题会在叠化时同时出现几帧（见 `depth-and-texture.md` 第六条），所以叠化只用在纯画面镜之间。
+
+配比（按 48 镜实测）：
 
 | 类型 | 占比 | 时长 | 用在 |
 |---|---|---|---|
@@ -69,9 +141,13 @@
 
 规则：同一转场不连用三次；硬切是最常用的，别为了"高级"把它替换成叠化。
 
-## 动画禁区
+## 动画禁区（与代码对齐后的版本）
 
-- 不做整体缩放推拉（Ken Burns）：这套风格的画面是"稳定的档案"，动的是信息不是镜头。
+- **排版文字层不做缩放推拉**。整幅微推只允许走 scene 级 `camera`，**默认 0（关）**，
+  要开写 `0.010–0.012`（超过 0.02 会看到重采样抖动）；背景图另有一套 ±14px 的极缓平移，
+  不需要也不能用手调。
+- 素材图入场自带 1.06→1.00 的呼吸（图片层），这是允许的；别在文字上再叠一层缩放。
 - 不做背景粒子、流光、渐变呼吸。
-- 数字不做滚动跳数（count-up），直接换值——滚动像短视频，换值像新闻。
-- 不做弹跳（bounce）、不做回弹过冲（overshoot）。
+- **数字默认直接换值，不做 count-up**。渲染器里 `count` 默认 `false`；只有显式写
+  `"count": true` 才滚动。滚动像短视频，换值像新闻——口播片基本不该开。
+- 不做弹跳（bounce）、不做回弹过冲（overshoot）。没有实现，写了也没用。

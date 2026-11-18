@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
-"""explainer-landscape 渲染器 v2：spec.json -> 带动效的 16:9 画面。
+"""explainer-landscape 渲染器 v3：spec.json -> 带动效的 16:9 画面。
 
-与 v1 的区别：每个元素都有入场时间。渲染函数接受场景内时间 t，
-输出该时刻的帧；t 缺省时给最终状态（出静帧用）。
+每个元素都有入场时间。渲染函数接受场景内时间 t，输出该时刻的帧；
+t 缺省时给最终状态（出静帧用）。
 
     python render.py spec.json out/ --png                 # 每镜终帧
-    python render.py spec.json out/ --contact             # 拼图
-    python render.py spec.json out/ --mp4                 # 每镜一段带动效的 mp4
-    python render.py spec.json out/ --video final.mp4     # 整片（含转场）
+    python render.py spec.json out/ --contact             # 拼图（旧名 --floorplan 仍可用）
+    python render.py spec.json out/ --mp4                 # 每镜一段带动效的 mp4（剪辑用）
+    python render.py spec.json out/ --video final.mp4     # 整片（转场在渲染器内合成）
 
-动效语法见 references/motion-spec.md。没有写 motion 的场景，按版式自动分配
-入场时间（标题 0s、主体 0.15s、逐条 0.5s 起每条 +0.45s）。
+`--video` 走 render_film：逐帧合成转场，**总时长严格等于各镜 dur 之和**，
+不用 ffmpeg xfade，所以没有"每次转场吃掉一个转场时长"的问题，也不绑定 ffmpeg 版本。
+`--mp4` 只出分镜片段（不含转场），留给剪辑软件自己拼。
+
+字段全表见 references/spec-schema.md；动效语法见 references/motion-spec.md。
+没有写 motion 的场景，按版式自动分配入场时间（章节牌 0s、标题 0.12s、主体 0.3s 起）。
 """
 from __future__ import annotations
 
@@ -20,7 +24,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
@@ -37,7 +40,7 @@ CARD = "#101216"
 MARGIN = 134
 RIGHT = 1786
 CONTENT_W = RIGHT - MARGIN
-FPS = 24
+FPS = 30          # 兜底值：横版优先 30fps。spec 里写 canvas.fps 就以 spec 为准
 
 FONT_CANDIDATES = {
     "regular": [r"C:\Windows\Fonts\msyh.ttc", r"C:\Windows\Fonts\Deng.ttf",
@@ -61,6 +64,16 @@ def font(size: int, weight: str = "regular") -> ImageFont.FreeTypeFont:
             f = ImageFont.truetype(path, size)
             _cache[key] = f
             return f
+    # regular / bold 找不到任何中文字体时不能静默回退：load_default 没有 CJK 字形，
+    # 会渲成 □□□ 且退出码仍是 0（2026-11 评审 C5，比报错更难查）。
+    if weight in ("regular", "bold"):
+        sys.stderr.write(
+            "ERROR: 找不到中文字体，中文会渲成方框。\n"
+            "  试过：" + "、".join(FONT_CANDIDATES.get(weight, [])) + "\n"
+            "  Linux: apt install fonts-noto-cjk\n"
+            "  macOS: 安装「苹方」或把 NotoSansCJK 放到 /usr/share/fonts/opentype/noto/\n"
+            "  Windows: 确认 C:\\Windows\\Fonts\\msyh.ttc 存在（微软雅黑）\n")
+        raise SystemExit(2)
     f = ImageFont.load_default(size)
     _cache[key] = f
     return f
@@ -141,7 +154,10 @@ def reveal_text(img, xy, s, size, color, p, weight="regular", anchor="la"):
 
 
 def count_value(target, p):
-    """数字滚动：把 target（可能带单位/符号）解析成数值，按 p 从 0 滚到目标。"""
+    """数字滚动：把 target（可能带单位/符号）解析成数值，按 p 从 0 滚到目标。
+
+    只在槽位写了 `"count": true` 时才走这里；常规版式禁用 count-up。
+    """
     import re
     m = re.match(r"^([^\d\-+]*)(-?[\d,]+(?:\.\d+)?)(.*)$", str(target))
     if not m:
@@ -177,7 +193,7 @@ def grain_tiles(n=6, size=(W, H)):
 
 
 def archival(img, sc, t, seed=0):
-    """档案化处理：去饱和 → 暖调 → 压暗角 → 颗粒 → 轻微门liner抖动。"""
+    """档案化处理：去饱和 → 暖调 → 压暗角 → 颗粒 → 轻微门 liner 抖动。"""
     p = sc.get("archival") if isinstance(sc.get("archival"), dict) else {}
     desat = float(p.get("desat", 0.62))
     warm = float(p.get("warm", 1.0))
@@ -205,7 +221,7 @@ _BD_CACHE = {}
 
 def _prepare_backdrop(path, sc):
     """每个镜头只做一次羽化预处理（降采样毁字 + 模糊），之后逐帧只做裁剪。"""
-    key = (path, sc.get("blur", 9), sc.get("id", ""))
+    key = (path, sc.get("blur", 0), sc.get("id", ""))
     if key in _BD_CACHE:
         return _BD_CACHE[key]
     zoom = 1.14
@@ -423,8 +439,6 @@ def draw_chrome(img, sc, t, mm):
         if len(lines) == 1 and sc.get("disclaimer", True):
             d.text((MARGIN, 1012), "本视频引用的研究与数据均标注出处",
                    font=font(20), fill=blend(DIM, ps), anchor="la")
-    elif sc.get("source"):
-        pass
 
     if sc.get("source"):
         p = P(mm, "source", t, 1.0)
@@ -463,7 +477,7 @@ def form_bignum(img, sc, t, mm):
     color = ACCENT if s.get("emphasis") else TEXT
     size = int(168 * (0.94 + 0.06 * ease_out(p)))
     y = lift(470, p, 24)
-    shown = count_value(number, ease_out(p)) if s.get("count", True) else number
+    shown = count_value(number, ease_out(p)) if s.get("count") else number
     d.text((MARGIN, y), shown, font=font(size, "bold"), fill=blend(color, min(1.0, p * 1.6)), anchor="la")
     if unit:
         pu = clamp(p * 2 - 0.6)
@@ -809,6 +823,9 @@ def draw_strap(img, sc, t, mm):
     while text_w(text, 34, "bold") > limit and len(text) > 6:
         text = text[:-2]
     d.text((x, y), text, font=font(34, "bold"), fill=blend(TEXT, p), anchor="lm")
+    clock = sc.get("clock")
+    if clock:
+        d.text((RIGHT, y), str(clock), font=font(20, "mono"), fill=blend(DIM, p), anchor="rm")
 
 
 def draw_callouts(img, sc, t, mm):
@@ -969,50 +986,17 @@ def render_segment(sc, path, fps=FPS, brand=None):
         raise SystemExit(f"渲染 {sc.get('id')} 失败")
 
 
-TRANS = {"fade": ("fade", 0.5), "dissolve": ("dissolve", 0.6), "wipe": ("wipeleft", 0.4),
-         "blur": ("fade", 0.5), "cut": (None, 0)}
-
-
-def concat_with_transitions(spec, segs, out_path, fps=FPS):
-    """按每镜 transition 拼成整片。纯硬切时直接 concat，不重编码。"""
-    kinds = [(sc.get("transition") or {}).get("type", "cut") for sc in spec["scenes"]]
-    if all(k in (None, "cut") for k in kinds[1:]):
-        lst = out_path + ".txt"
-        open(lst, "w", encoding="utf-8").write("\n".join(f"file '{s}'" for s in segs))
-        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0",
-                        "-i", lst, "-c", "copy", out_path], check=True)
-        os.remove(lst)
-        return
-
-    inputs, filters, cur = [], [], None
-    for s in segs:
-        inputs += ["-i", s]
-    total = 0.0
-    for i, sc in enumerate(spec["scenes"]):
-        d = float(sc["dur"])
-        if i == 0:
-            cur = "0:v"
-            total = d
-            continue
-        kind = (sc.get("transition") or {}).get("type", "cut")
-        name, xd = TRANS.get(kind, (None, 0))
-        if name is None or xd <= 0:
-            filters.append(f"[{cur}][{i}:v]concat=n=2:v=1:a=0[c{i}]")
-            cur = f"c{i}"
-            total += d
-        else:
-            filters.append(
-                f"[{cur}][{i}:v]xfade=transition={name}:duration={xd}:offset={total - xd:.3f}[x{i}]")
-            cur = f"x{i}"
-            total += d - xd
-    subprocess.run(["ffmpeg", "-y", "-v", "error"] + inputs +
-                   ["-filter_complex", ";".join(filters), "-map", f"[{cur}]",
-                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
-                    "-pix_fmt", "yuv420p", out_path], check=True)
+# 转场在 render_film 里逐帧合成。v2 的 concat_with_transitions（ffmpeg xfade 链）已删除：
+# 每接一次 xfade 就会吃掉一个转场时长的总长（每镜 −trans_dur），口播片会整片音画错位；
+# 且某镜 dur 小于转场时长时 ffmpeg 直接报错。现在整片时长严格等于 sum(dur)。
 
 
 def apply_camera(img, t, dur, amt=0.012):
-    """极缓推镜：整幅 1.000→1.025，让静止段也不是完全死帧。"""
+    """极缓推镜：整幅 1.000→1.025，让静止段也不是完全死帧。
+
+    只走 scene 级 `camera` 字段，**默认 0（关）**——排版文字层不做缩放推拉，
+    要开就写 `"camera": 0.010~0.012`，只给成片级微推用。
+    """
     if amt <= 0:
         return img
     p = clamp(t / max(0.1, dur))
@@ -1025,8 +1009,12 @@ def apply_camera(img, t, dur, amt=0.012):
 
 
 def render_film(spec, out_path, fps=FPS, brand=None, on_progress=None):
-    """整片渲染：转场在渲染器内部完成（淡入淡出 / 叠化 / 划像），一次编码，
-    不依赖 ffmpeg 的 xfade 链，时间轴完全可控。"""
+    """整片渲染：转场在渲染器内部完成（黑场 / 叠化 / 划像），一次编码，
+    不依赖 ffmpeg 的 xfade 链，时间轴完全可控。
+
+    转场吃掉的是前一镜的**尾部**画面（转场期间两镜同时可见），
+    所以输出总时长 = sum(dur)，不会像 xfade 那样每接一次就短一段。
+    """
     scenes = spec["scenes"]
     starts, t = [], 0.0
     for sc in scenes:
@@ -1054,20 +1042,21 @@ def render_film(spec, out_path, fps=FPS, brand=None, on_progress=None):
             frame = render_scene(sc, t=T - starts[idx], spec_brand=brand)
             frame = apply_camera(frame, T - starts[idx], float(sc["dur"]),
                                  float(sc.get("camera", 0.0)))
-            if kind not in ("cut", None) and xd > 0 and T > end - xd and idx + 1 < len(scenes):
+            if kind in ("cut", None, "") or xd <= 0 or idx + 1 >= len(scenes):
+                pass
+            elif T > end - xd:
                 p2 = clamp((T - (end - xd)) / xd)
                 nxt = scenes[idx + 1]
-                b = render_scene(nxt, t=max(0.0, T - starts[idx + 1] + 0.001), spec_brand=brand)
-                if kind in ("dissolve", "wipe"):
-                    kind = "fade"
+                nt = max(0.0, T - starts[idx + 1] + 0.001)
+                b = render_scene(nxt, t=nt, spec_brand=brand)
+                b = apply_camera(b, nt, float(nxt["dur"]), float(nxt.get("camera", 0.0)))
                 if kind == "dissolve":
                     frame = Image.blend(frame, b, p2)
                 elif kind in ("fade", "blur"):
                     if p2 < 0.5:
                         frame = Image.blend(frame, black, p2 * 2)
                     else:
-                        bb = Image.blend(black, b, (p2 - 0.5) * 2)
-                        frame = bb
+                        frame = Image.blend(black, b, (p2 - 0.5) * 2)
                 elif kind == "wipe":
                     cut = int(W_ * p2)
                     frame = frame.copy()
@@ -1102,7 +1091,7 @@ def main(argv):
         print(__doc__)
         return 1
     spec_path, out_dir = argv[1], argv[2]
-    spec = json.load(open(spec_path, encoding="utf-8"))
+    spec = json.load(open(spec_path, encoding="utf-8-sig"))   # 兼容 Windows 记事本的 BOM
     resolve_media(os.path.dirname(os.path.abspath(spec_path)), spec["scenes"])
     os.makedirs(out_dir, exist_ok=True)
     flags = set(a for a in argv[3:] if a.startswith("--"))
@@ -1114,28 +1103,35 @@ def main(argv):
         for sc in spec["scenes"]:
             render_scene(sc, spec_brand=brand).save(os.path.join(out_dir, f"{sc['id']}.png"))
         print(f"渲染 {len(spec['scenes'])} 张终帧 -> {out_dir}")
-    if "--contact" in flags:
+    if "--contact" in flags or "--floorplan" in flags:      # --floorplan 是 v2 文档里的旧名
         contact_sheet(spec, os.path.join(out_dir, "contact.png"))
         print(f"拼图 -> {os.path.join(out_dir, 'contact.png')}")
+
+    fps = None
     if "--mp4" in flags or "--video" in flags:
         if not _ffmpeg():
-            raise SystemExit("需要 ffmpeg")
+            raise SystemExit("需要 ffmpeg（出 mp4）")
+        # fps 以 spec 的 canvas.fps 为准（2026-11 案例回灌：横版交 30，
+        # 别再让 spec 写了 30 而渲染偷偷用 24）
+        canvas_fps = (spec.get("canvas") or {}).get("fps")
+        if canvas_fps is None:
+            print(f"提示：canvas.fps 未写，按 {FPS}fps 渲染；横版默认建议 30")
+        fps = int(canvas_fps or FPS)
+    if "--mp4" in flags:
         segdir = os.path.join(out_dir, "segs")
         os.makedirs(segdir, exist_ok=True)
-        segs = []
-        # fps 以 spec 的 canvas.fps 为准（2026-11 案例回灌：横版也可以交 30fps，
-        # 别再让 spec 里写了 30 而渲染偷偷用 24）
-        fps = int((spec.get("canvas") or {}).get("fps") or FPS)
         for sc in spec["scenes"]:
-            p = os.path.join(segdir, f"{sc['id']}.mp4")
-            render_segment(sc, p, fps=fps, brand=brand)
-            segs.append(p)
-        print(f"渲染 {len(segs)} 段")
-        if "--video" in flags:
-            i = argv.index("--video")
-            target = argv[i + 1] if len(argv) > i + 1 else os.path.join(out_dir, "video.mp4")
-            concat_with_transitions(spec, segs, target, fps=fps)
-            print(f"整片 -> {target}")
+            render_segment(sc, os.path.join(segdir, f"{sc['id']}.mp4"), fps=fps, brand=brand)
+        print(f"渲染 {len(spec['scenes'])} 段（无转场）-> {segdir}")
+    if "--video" in flags:
+        i = argv.index("--video")
+        target = argv[i + 1] if len(argv) > i + 1 else os.path.join(out_dir, "video.mp4")
+        if target.startswith("--"):
+            target = os.path.join(out_dir, "video.mp4")
+        parent = os.path.dirname(os.path.abspath(target))
+        os.makedirs(parent, exist_ok=True)
+        render_film(spec, target, fps=fps, brand=brand)
+        print(f"整片 -> {target}  （时长 {spec_duration(spec):.1f}s，转场在片内合成）")
     print(f"总时长 {spec_duration(spec):.1f}s / {len(spec['scenes'])} 镜")
     return 0
 

@@ -10,7 +10,9 @@
     python strip_chrome.py spec.json -o spec.bare.json --drop-chapter
     python strip_chrome.py spec.json --check                       # 只报告每镜都有哪些 chrome
 
-不动的字段：form / slots / motion / dur / id / title / kicker / depth / archival / callouts。
+不动的字段：form / slots / motion / dur / id / title / subtitle / kicker / depth /
+archival / callouts / transition / camera。`strap` / `strap_tab` / `clock` 属于 chrome
+（下三分之一电视栏），切极简档时一起撤——否则屏幕上还横着一条横条。
 """
 from __future__ import annotations
 
@@ -19,7 +21,8 @@ import json
 import sys
 from pathlib import Path
 
-CHROME_KEYS = ("label_left", "label_right", "when", "rel", "source", "tc", "show_tc", "brand")
+CHROME_KEYS = ("label_left", "label_right", "when", "rel", "source", "tc", "show_tc",
+               "brand", "strap", "strap_tab", "clock")
 
 
 def strip(spec: dict, *, drop_chapter: bool) -> dict:
@@ -48,7 +51,8 @@ def report(spec: dict) -> int:
         n = counts.get(k, 0)
         flag = "✅" if n else "—"
         print(f"  {flag} {k:12s} {n}/{len(scenes)} 镜")
-    noisy = [k for k in ("when", "rel", "source", "tc") if counts.get(k)]
+    noisy = [k for k in ("when", "rel", "source", "tc", "strap", "strap_tab", "clock")
+             if counts.get(k)]
     if noisy:
         print(f"\n提示：{', '.join(noisy)} 还在 → 想走极简档就跑 "
               f"`python strip_chrome.py <spec> -o <out>`")
@@ -71,6 +75,7 @@ def main(argv: list[str]) -> int:
         ap.error("要么给 -o 输出文件，要么用 --check")
 
     out = Path(a.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(strip(spec, drop_chapter=a.drop_chapter),
                               ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"-> {out}  ({'裸图档' if a.drop_chapter else '极简档'})")

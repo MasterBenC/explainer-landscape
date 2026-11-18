@@ -18,8 +18,15 @@ SKIP = {"__pycache__", ".git", "out"}
 def default_targets() -> list[str]:
     home = os.path.expanduser("~")
     names = [".agents/skills", ".claude/skills", ".codex/skills"]
-    return [os.path.join(home, n) for n in names
-            if os.path.isdir(os.path.join(home, os.path.dirname(n))) or os.path.isdir(os.path.join(home, n))]
+    found = [os.path.join(home, n) for n in names
+             if os.path.isdir(os.path.join(home, os.path.dirname(n))) or os.path.isdir(os.path.join(home, n))]
+    if found:
+        return found
+    # 全新机器上一个 agent 目录都没有：不能静默返回空列表什么都不装。
+    # 回退到通用 Agents 技能目录（DSH / 豆包 / Trae 都读这里），并打印说明。
+    fallback = os.path.join(home, ".agents", "skills")
+    print(f"没找到任何已有 skills 目录，回退创建 {fallback}")
+    return [fallback]
 
 
 def rel_files(root: str) -> list[str]:
