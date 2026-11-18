@@ -1,0 +1,207 @@
+{
+  "canvas": {"w": 1920, "h": 1080, "fps": 24},
+  "title": "示例：黄仁勋卸任（0:00–0:33）",
+  "brand": "Anthropic",
+  "scenes": [
+    {
+      "id": "s01",
+      "t": 0.0,
+      "dur": 1.3,
+      "form": "bignum",
+      "when": "11-13",
+      "rel": "今天",
+      "title": "黄仁勋卸任",
+      "kicker": "黄仁勋·英伟达创始人、CEO",
+      "subtitle": "干了三十三年，董事会今天宣布他辞职",
+      "source": "画面：NVIDIA GTC 2026 主题演讲（NVIDIA 官方频道）",
+      "tc": "00:00.8",
+      "slots": {
+        "number": "33",
+        "unit": "年",
+        "caption": "他亲手创立、干了三十三年",
+        "emphasis": true,
+        "note": "董事会 11 席（含黄仁勋本人）"
+      },
+      "motion": [
+        {"item": "number", "at": 0.0, "kind": "appear", "easing": "instant", "dur": 0.0}
+      ]
+    },
+    {
+      "id": "s02",
+      "t": 1.3,
+      "dur": 4.0,
+      "form": "evidence",
+      "when": "11-09",
+      "rel": "两天前",
+      "title": "董事会：对他有信心",
+      "subtitle": "两天前情况还比较乐观",
+      "source": "画面：CNBC（2026-11-09）；英伟达董事会声明（2026-11-08）",
+      "tc": "00:04.0",
+      "slots": {
+        "left": "",
+        "right": "",
+        "quote": "“对他有信心”",
+        "attrib": "英伟达董事会声明 · 2026-11-08"
+      },
+      "motion": [
+        {"item": "attrib", "at": 1.2, "kind": "appear", "easing": "instant", "dur": 0.0}
+      ]
+    },
+    {
+      "id": "s03",
+      "t": 5.3,
+      "dur": 6.0,
+      "form": "list",
+      "when": "11-12",
+      "rel": "今天早上",
+      "title": "纽约时报又爆出",
+      "subtitle": "除了 Alice 黄，他和公司里一位直接下属的关系",
+      "source": "画面：Bloomberg（2026-11-11）转引纽约时报；照片：ABC7",
+      "tc": "00:10.0",
+      "slots": {
+        "items": [
+          {"n": "01", "text": "10-29 纽约时报最先报道", "at": 0.0},
+          {"n": "02", "text": "11-06 X 上一条帖子", "at": 2.0},
+          {"n": "03", "text": "11-11 华尔街日报：董事会准备罢免", "at": 4.0}
+        ]
+      },
+      "motion": [
+        {"item": "items[0]", "at": 0.0, "kind": "appear", "easing": "ease_out", "dur": 0.4},
+        {"item": "items[1]", "at": 2.0, "kind": "appear", "easing": "ease_out", "dur": 0.4},
+        {"item": "items[2]", "at": 4.0, "kind": "appear", "easing": "ease_out", "dur": 0.4}
+      ]
+    },
+    {
+      "id": "s04",
+      "t": 11.3,
+      "dur": 9.0,
+      "form": "timeline",
+      "when": "2024 → 2025",
+      "rel": "两年间",
+      "title": "英伟达联邦游说",
+      "subtitle": "游说费从六十多万美元涨到约六百万",
+      "source": "来源：POGO、Bloomberg（2026-11）",
+      "tc": "00:19.0",
+      "slots": {
+        "points": [
+          {"label": "2024", "value": "约 $64 万", "at": 0.0},
+          {"label": "2025", "value": "约 $600 万", "at": 2.2},
+          {"label": "白宫宴会厅", "value": "捐款 $2500 万", "at": 4.4}
+        ],
+        "delta": "×10",
+        "axis": "数据：FEC、POGO、华盛顿邮报"
+      },
+      "motion": []
+    },
+    {
+      "id": "s05",
+      "t": 20.3,
+      "dur": 8.0,
+      "form": "relation",
+      "chapter": "线索二·议员和钱",
+      "brand": "Anthropic",
+      "when": "11-12",
+      "rel": "24 小时内",
+      "title": "背后的推手，到底有谁？",
+      "subtitle": "有人说是民主党，有人说是鹰派，有人说是华尔街",
+      "source": "画面：CNBC 资料画面；数据：FEC",
+      "tc": "00:40.0",
+      "slots": {
+        "center": "黄仁勋",
+        "satellites": [
+          {"label": "民主党", "at": 1.0, "kind": "org"},
+          {"label": "鹰派", "at": 2.6, "kind": "person"},
+          {"label": "华尔街", "at": 4.2, "kind": "money"},
+          {"label": "两届政府的人", "at": 5.8, "kind": "person"}
+        ],
+        "note": "连线仅表示报道中出现的关联，不代表因果"
+      },
+      "motion": []
+    },
+    {
+      "id": "s06",
+      "t": 28.3,
+      "dur": 12.0,
+      "form": "sources",
+      "when": "11-13",
+      "rel": "结尾",
+      "subtitle": "牌局还没结束。没有了黄仁勋的英伟达，和这张牌桌接下来怎么走，我们拭目以待",
+      "source": "",
+      "tc": "04:12.0",
+      "slots": {
+        "closing": "牌局还没结束。\n拭目以待",
+        "blocks": [
+          {
+            "title": "参考报道与资料",
+            "lines": [
+              "纽约时报：黄仁勋与一名直接下属的关系（2026-11-11）",
+              "华尔街日报：英伟达董事会准备罢免黄仁勋（2026-11-11）",
+              "CNBC、Reuters、Forbes、Yahoo Finance：董事会会议与盘后股价（2026-11-11/12）",
+              "英伟达董事会声明（2026-11-08）",
+              "NPR：孔斯称调查英伟达 CEO 是头号优先事项（2026-11-09）",
+              "Anthropic：Richard Fontaine 加入长期利益信托（2025-06）"
+            ]
+          },
+          {
+            "title": "实拍、图片与音乐",
+            "lines": [
+              "CNN、BBC News、CBS、ABC7、Bloomberg、CNBC、NVIDIA、AMD 官方频道",
+              "照片：Wikimedia Commons、美国国会与白宫官方；剪辑插图为 AI 生成",
+              "音乐：“Under Suspicion” by Lee, CC BY 4.0"
+            ]
+          }
+        ]
+      },
+      "motion": []
+    },
+    {
+      "id": "s07",
+      "t": 40.3,
+      "dur": 8.0,
+      "form": "chart",
+      "when": "2022 → 2026",
+      "rel": "四年",
+      "title": "他留下的公司",
+      "kicker": "英伟达市值（万亿美元）",
+      "subtitle": "四年里从四千亿涨到五万亿，最后一年最陡",
+      "source": "数据：公司财报与公开市场收盘价（2026-11-12）",
+      "tc": "00:40.3",
+      "slots": {
+        "kind": "bar",
+        "chart_title": "市值（万亿美元）",
+        "data": [
+          {"name": "2022", "label": "0.4", "value": 0.4},
+          {"name": "2023", "label": "1.0", "value": 1.0},
+          {"name": "2024", "label": "3.0", "value": 3.0},
+          {"name": "2026", "label": "5.0", "value": 5.0, "highlight": true}
+        ],
+        "source_note": "单位：万亿美元"
+      },
+      "motion": [
+        {"item": "chart", "at": 0.3, "kind": "appear", "easing": "ease_out", "dur": 0.8}
+      ]
+    },
+    {
+      "id": "s08",
+      "t": 48.3,
+      "dur": 7.0,
+      "form": "photo",
+      "when": "11-13",
+      "rel": "今天",
+      "title": "一纸声明",
+      "kicker": "英伟达董事会声明（2026-11-13）",
+      "subtitle": "声明只有四段，没有解释原因",
+      "source": "图：英伟达投资者关系页（2026-11-13）",
+      "tc": "00:48.3",
+      "slots": {
+        "image": "media/doc-page.png",
+        "caption": "声明发布在投资者关系页，全文四段，未提原因",
+        "credit": "图：示例占位页 · 2026-11-13",
+        "framed": true
+      },
+      "motion": [
+        {"item": "image", "at": 0.0, "kind": "appear", "easing": "ease_out", "dur": 0.4}
+      ]
+    }
+  ]
+}
