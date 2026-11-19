@@ -15,27 +15,27 @@ python install.py --target ~/.agents/skills
 ## 用
 
 ```bash
-cd <skill_dir>          # 本 skill 的安装目录；下面命令里的 assets/kit/... 都相对它
+# 下面命令里的 <skill-dir> = 本 skill 的安装目录；spec 和 out/ 放你自己的目录
 
 # 1. 从示例改出自己的分镜（9 镜 / 48.5s 的版式样张；极简档看 spec.minimal.sample.json）
 cp assets/examples/spec.sample.json my_spec.json
 cp -r assets/examples/media .        # 示例 spec 的图按 spec 文件所在目录解析，必须一起拷过来
 
 # 2. 选 chrome：档案档（默认）还是极简档（只留章节牌 + 字幕，来源收片尾）
-python assets/kit/strip_chrome.py my_spec.json -o my_spec.minimal.json
-python assets/kit/strip_chrome.py my_spec.json --check        # 先看现在都有哪些角标
+python "<skill-dir>/assets/kit/strip_chrome.py" my_spec.json -o my_spec.minimal.json
+python "<skill-dir>/assets/kit/strip_chrome.py" my_spec.json --check        # 先看现在都有哪些角标
 
 # 3. 出静帧，先看版式
-python assets/kit/render.py my_spec.json out/ --png --contact
+python "<skill-dir>/assets/kit/render.py" my_spec.json out/ --png --contact
 
 # 4. 自检（有静帧时加 --images 查红占比/填充率/亮度）
-python assets/kit/audit.py my_spec.json --images out/
+python "<skill-dir>/assets/kit/audit.py" my_spec.json --images out/
 
 # 5a. 出分镜片段（不含转场，给剪辑软件）
-python assets/kit/render.py my_spec.json out/ --mp4
+python "<skill-dir>/assets/kit/render.py" my_spec.json out/ --mp4
 
 # 5b. 或直接出整片（转场在片内合成，总时长 = Σdur）
-python assets/kit/render.py my_spec.json out/ --video out/final.mp4
+python "<skill-dir>/assets/kit/render.py" my_spec.json out/ --video out/final.mp4
 ```
 
 ## spec 长什么样

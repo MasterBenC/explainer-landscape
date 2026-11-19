@@ -153,4 +153,4 @@
 9. `clock` 没有 `strap` 就不画；`tc` 没有 `show_tc` 也不画。
 10. `sources` 必须在最后；`transition.duration` 必须小于本镜 `dur`。
 
-跑 `python assets/kit/audit.py spec.json`（有静帧加 `--images out/`）能抓掉上面 10 条里的 8 条。
+跑 `python "<skill-dir>/assets/kit/audit.py" spec.json`（有静帧加 `--images out/`）能抓掉上面 10 条里的 8 条。

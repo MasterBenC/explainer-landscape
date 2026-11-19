@@ -34,26 +34,25 @@ fc-list :lang=zh | head -3                                 # Linux 必查，空 
 ## 1. 五步流程
 
 ```bash
-cd <skill_dir>        # 本 skill 的安装目录（如 ~/.claude/skills/explainer-landscape）；
-                      # 下面所有 python assets/kit/... 都必须在它下面执行，
-                      # 在别的目录直接跑会 FileNotFoundError
+# 下面命令里的 <skill-dir> = 本 skill 的安装目录（如 ~/.claude/skills/explainer-landscape）；
+# spec 和 out/ 都放你自己的目录，不需要 cd 进 skill 目录
 
 # ① 写分镜 spec，一个 scene 一段画面
 #    字段全表见 references/spec-schema.md（漏字段/拼错键名是最常见的返工原因）
 
 # ② 渲染静帧看版式（先看图，再上时间线）
-python assets/kit/render.py spec.json out/ --png
+python "<skill-dir>/assets/kit/render.py" spec.json out/ --png
 
 # ③ 自检：字段、转场、版式、节奏；有静帧时再加像素检查
-python assets/kit/audit.py spec.json
-python assets/kit/audit.py spec.json --images out/     # 红占比 / 填充率 / 亮度
+python "<skill-dir>/assets/kit/audit.py" spec.json
+python "<skill-dir>/assets/kit/audit.py" spec.json --images out/     # 红占比 / 填充率 / 亮度
 
 # ④ 出片，两条路：
-python assets/kit/render.py spec.json out/ --mp4                  # 分镜片段（不含转场，给剪辑软件）
-python assets/kit/render.py spec.json out/ --video out/final.mp4   # 整片（转场在片内合成）
+python "<skill-dir>/assets/kit/render.py" spec.json out/ --mp4                  # 分镜片段（不含转场，给剪辑软件）
+python "<skill-dir>/assets/kit/render.py" spec.json out/ --video out/final.mp4   # 整片（转场在片内合成）
 
 # ⑤ 回看：整片抽帧拼图，确认没有一屏是"只有背景和一句话"
-python assets/kit/render.py spec.json out/ --contact
+python "<skill-dir>/assets/kit/render.py" spec.json out/ --contact
 ```
 
 `--video` 的转场吃掉的是**前一镜的尾部**画面，输出总时长严格等于各镜 `dur` 之和
@@ -87,8 +86,8 @@ python assets/kit/render.py spec.json out/ --contact
 切档一条命令（不动版式，只改 chrome 字段）：
 
 ```bash
-python assets/kit/strip_chrome.py my_spec.json -o my_spec.minimal.json   # 极简档
-python assets/kit/strip_chrome.py my_spec.json --check                   # 先看现在都有哪些角标
+python "<skill-dir>/assets/kit/strip_chrome.py" my_spec.json -o my_spec.minimal.json   # 极简档
+python "<skill-dir>/assets/kit/strip_chrome.py" my_spec.json --check                   # 先看现在都有哪些角标
 ```
 
 两个坑：`disclaimer` 默认是 **true**（不写也会在底部画一行免责声明），极简档必须显式关掉——

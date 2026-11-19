@@ -68,9 +68,9 @@
 改完版式先跑这三条，再看观感：
 
 ```bash
-python assets/kit/render.py spec.json out/ --png      # 终帧
-python assets/kit/render.py spec.json out/ --contact  # 拼图：深度是否交替
-python assets/kit/audit.py spec.json                  # 结构与节奏
+python "<skill-dir>/assets/kit/render.py" spec.json out/ --png      # 终帧
+python "<skill-dir>/assets/kit/render.py" spec.json out/ --contact  # 拼图：深度是否交替
+python "<skill-dir>/assets/kit/audit.py" spec.json                  # 结构与节奏
 ```
 
 填充率自查（论文级指标，纯 PIL，不需要 numpy）：

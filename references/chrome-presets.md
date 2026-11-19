@@ -50,13 +50,13 @@
 
 ```bash
 # 全片切成极简档（保留 chapter，把 source/when/rel/tc/brand/label_*/strap/clock/disclaimer 全关掉）
-python assets/kit/strip_chrome.py my_spec.json -o my_spec.minimal.json
+python "<skill-dir>/assets/kit/strip_chrome.py" my_spec.json -o my_spec.minimal.json
 
 # 连 chapter 一起关（只剩图 + 字幕）
-python assets/kit/strip_chrome.py my_spec.json -o my_spec.bare.json --drop-chapter
+python "<skill-dir>/assets/kit/strip_chrome.py" my_spec.json -o my_spec.bare.json --drop-chapter
 
 # 反向：从极简档看还缺什么（只报告，不改文件）
-python assets/kit/strip_chrome.py my_spec.json --check
+python "<skill-dir>/assets/kit/strip_chrome.py" my_spec.json --check
 ```
 
 脚本只改 chrome 字段，不动版式、槽位、`motion`、`transition`，所以切档前后**画面主体一模一样**，

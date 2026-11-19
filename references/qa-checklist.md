@@ -1,6 +1,6 @@
 # 交付前自检清单
 
-跑 `python assets/kit/audit.py spec.json` 会自动查表里的「机器可查」项；有静帧时加
+跑 `python "<skill-dir>/assets/kit/audit.py" spec.json` 会自动查表里的「机器可查」项；有静帧时加
 `--images out/` 再查红占比、填充率、亮度。其余靠人眼过一遍。
 
 ## 一、版式
