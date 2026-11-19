@@ -34,6 +34,10 @@ fc-list :lang=zh | head -3                                 # Linux 必查，空 
 ## 1. 五步流程
 
 ```bash
+cd <skill_dir>        # 本 skill 的安装目录（如 ~/.claude/skills/explainer-landscape）；
+                      # 下面所有 python assets/kit/... 都必须在它下面执行，
+                      # 在别的目录直接跑会 FileNotFoundError
+
 # ① 写分镜 spec，一个 scene 一段画面
 #    字段全表见 references/spec-schema.md（漏字段/拼错键名是最常见的返工原因）
 

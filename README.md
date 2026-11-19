@@ -15,8 +15,11 @@ python install.py --target ~/.agents/skills
 ## 用
 
 ```bash
+cd <skill_dir>          # 本 skill 的安装目录；下面命令里的 assets/kit/... 都相对它
+
 # 1. 从示例改出自己的分镜（9 镜 / 48.5s 的版式样张；极简档看 spec.minimal.sample.json）
 cp assets/examples/spec.sample.json my_spec.json
+cp -r assets/examples/media .        # 示例 spec 的图按 spec 文件所在目录解析，必须一起拷过来
 
 # 2. 选 chrome：档案档（默认）还是极简档（只留章节牌 + 字幕，来源收片尾）
 python assets/kit/strip_chrome.py my_spec.json -o my_spec.minimal.json

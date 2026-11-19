@@ -8,6 +8,7 @@ t 缺省时给最终状态（出静帧用）。
     python render.py spec.json out/ --contact             # 拼图（旧名 --floorplan 仍可用）
     python render.py spec.json out/ --mp4                 # 每镜一段带动效的 mp4（剪辑用）
     python render.py spec.json out/ --video final.mp4     # 整片（转场在渲染器内合成）
+    python render.py spec.json out/ --png --only s07,s12  # 只渲指定镜：改一镜不必重跑全片
 
 `--video` 走 render_film：逐帧合成转场，**总时长严格等于各镜 dur 之和**，
 不用 ffmpeg xfade，所以没有"每次转场吃掉一个转场时长"的问题，也不绑定 ffmpeg 版本。
@@ -1099,10 +1100,23 @@ def main(argv):
         flags = {"--png"}
     brand = spec.get("brand")
 
+    # --only s07,s12：只渲指定镜（改一镜不必重跑全片；未列出的镜不会写盘）
+    only = None
+    if "--only" in flags:
+        i = argv.index("--only")
+        if len(argv) > i + 1 and not argv[i + 1].startswith("--"):
+            only = {s.strip() for s in argv[i + 1].split(",") if s.strip()}
+        if not only:
+            raise SystemExit("--only 后面要跟镜 id，逗号分隔，例如 --only s07,s12")
+        missing = only - {sc["id"] for sc in spec["scenes"]}
+        if missing:
+            raise SystemExit(f"--only 里有不存在的镜 id：{sorted(missing)}")
+    sel = [sc for sc in spec["scenes"] if only is None or sc["id"] in only]
+
     if "--png" in flags:
-        for sc in spec["scenes"]:
+        for sc in sel:
             render_scene(sc, spec_brand=brand).save(os.path.join(out_dir, f"{sc['id']}.png"))
-        print(f"渲染 {len(spec['scenes'])} 张终帧 -> {out_dir}")
+        print(f"渲染 {len(sel)} 张终帧 -> {out_dir}" + (f"（--only {','.join(sorted(only))}）" if only else ""))
     if "--contact" in flags or "--floorplan" in flags:      # --floorplan 是 v2 文档里的旧名
         contact_sheet(spec, os.path.join(out_dir, "contact.png"))
         print(f"拼图 -> {os.path.join(out_dir, 'contact.png')}")
@@ -1120,9 +1134,9 @@ def main(argv):
     if "--mp4" in flags:
         segdir = os.path.join(out_dir, "segs")
         os.makedirs(segdir, exist_ok=True)
-        for sc in spec["scenes"]:
+        for sc in sel:
             render_segment(sc, os.path.join(segdir, f"{sc['id']}.mp4"), fps=fps, brand=brand)
-        print(f"渲染 {len(spec['scenes'])} 段（无转场）-> {segdir}")
+        print(f"渲染 {len(sel)} 段（无转场）-> {segdir}" + (f"（--only {','.join(sorted(only))}）" if only else ""))
     if "--video" in flags:
         i = argv.index("--video")
         target = argv[i + 1] if len(argv) > i + 1 else os.path.join(out_dir, "video.mp4")
