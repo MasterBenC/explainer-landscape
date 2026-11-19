@@ -38,6 +38,12 @@ python "<skill-dir>/assets/kit/render.py" my_spec.json out/ --mp4
 python "<skill-dir>/assets/kit/render.py" my_spec.json out/ --video out/final.mp4
 ```
 
+装完想确认"这台机器能跑通"，跑一条全链冒烟（示例 spec → 渲染 → 自检 → 去框 → 转场）：
+
+```bash
+python "<skill-dir>/smoke_test.py"        # 全通退出码 0；缺 Pillow 退出码 2，其余失败退出码 1
+```
+
 ## spec 长什么样
 
 > `canvas.fps` 从 0.2.0 起真正生效；0.3.0 起缺省值改成 30（横版优先 30fps，
@@ -65,18 +71,24 @@ python "<skill-dir>/assets/kit/render.py" my_spec.json out/ --video out/final.mp
 
 | 文件 | 内容 |
 |---|---|
-| `SKILL.md` | 流程、环境检查、硬规则、选版式、五幕结构 |
+| `SKILL.md` | 流程、环境检查、硬规则、选版式、五幕结构（粗粒度，与八段一一对上） |
 | `references/spec-schema.md` | **spec 字段全表**（顶层 / 场景公共 / 8 种版式槽位 / 10 个坑） |
 | `references/layout-spec.md` | 画布、颜色、chrome 坐标、字号阶梯、栅格 |
 | `references/form-catalog.md` | 八种版式的线框图和槽位（含 `chart` 四种画法、`photo` 两种落法） |
 | `references/motion-spec.md` | 动效字段、自动排布、`beats`、转场结构、动画禁区 |
-| `references/pacing-spec.md` | 七段叙事结构（合计 100%）、镜长分布、章节配比、一镜信息量 |
+| `references/pacing-spec.md` | 八段叙事结构（合计 100%，含五幕 ↔ 八段对照）、镜长分布、章节配比、一镜信息量 |
 | `references/depth-and-texture.md` | 深度交替、档案化、常驻页眉、下三分之一横条、证据标注 |
 | `references/orchestration.md` | 和 rea-video / koubo / shotcraft 等技能的分工与换渲染层判据 |
 | `references/qa-checklist.md` | 交付前自检（分档案档 / 极简档） |
 | `references/chrome-presets.md` | **两档 chrome 的字段对照**（档案档 / 极简档）与示例场景 |
 | `references/cases-2026-11.md` | 0.2.0 的改动来源：两期真实成片的 8 条用户口径 + 实测参数 |
-| `assets/kit/render.py` | spec → 静帧 / 分镜 mp4 / 整片（转场片内合成）/ 拼图 |
+| `smoke_test.py` | 全链冒烟：示例 spec → 渲染 → audit → 去框 → 转场，附字体回退检查 |
+| `assets/kit/render.py` | 入口：CLI / spec 加载 / 按选项调各层（实现在下面四个子模块） |
+| `assets/kit/kit_common.py` | 公共工具：设计 token、字体回退、缓动、文本排版、图/底色缓存、档案化 |
+| `assets/kit/kit_chrome.py` | chrome 模板：页眉 / 章节牌 / 字幕 / 来源行 / 时间码 / kicker / strap / callouts |
+| `assets/kit/kit_forms.py` | 版式渲染器：八种 form + `FORMS` 注册表 |
+| `assets/kit/kit_scene.py` | 单镜合成：depth（bg / split / fg）+ 一帧的组装顺序 |
+| `assets/kit/kit_film.py` | 视频转场合成：`--mp4` 分镜片段、`--video` 整片、推镜、拼图 |
 | `assets/kit/audit.py` | spec → FAIL/WARN + `--images` 像素检查 |
 | `assets/kit/strip_chrome.py` | 一条命令把 spec 切到极简档 / 裸图档 |
 | `assets/examples/spec.sample.json` | 9 镜档案档样张（八种版式 + 一镜 depth fg，含转场 / strap / callouts） |
@@ -92,6 +104,12 @@ python "<skill-dir>/assets/kit/render.py" my_spec.json out/ --video out/final.mp
 
 ## 变更
 
+- **0.3.1（2026-11-19）** 结构与工程：
+  叙事结构只留一套口径——「五幕」是粗粒度骨架，「八段」是细分刻度，`references/pacing-spec.md`
+  给出五幕 ↔ 八段对照表（旧版「七段」与那张 8 行的表不符，已改掉）；新增根目录 `smoke_test.py`
+  全链冒烟（示例 spec → 渲染 → `audit.py` → `strip_chrome.py` → 转场，附字体回退与豆腐块检测）；
+  `render.py` 拆成 `kit_common` / `kit_chrome` / `kit_forms` / `kit_scene` / `kit_film` 五个子模块，
+  `render.py` 只剩 CLI 与 spec 加载——命令行、spec 格式、画面输出逐字节不变。
 - **0.3.0（2026-11-18）** 按外部评审修了一轮：
   `--video` 改走 `render_film`（转场在片内逐帧合成，总时长严格 = Σdur；删掉会吃掉时长的
   `concat_with_transitions` 与 xfade 依赖）；`--floorplan` 归正为 `--contact`（旧名保留别名）；
