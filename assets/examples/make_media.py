@@ -75,8 +75,8 @@ def main() -> int:
     os.makedirs(MEDIA, exist_ok=True)
     doc_page(os.path.join(MEDIA, "doc-page.png"))
     archive_card(os.path.join(MEDIA, "archive-card.png"))
-    print(f"-> {MEDIA}\\doc-page.png")
-    print(f"-> {MEDIA}\\archive-card.png")
+    for name in ("doc-page.png", "archive-card.png"):
+        print(f"-> {os.path.join(MEDIA, name)}")
     return 0
 
 

@@ -608,7 +608,7 @@ def auto_motion(sc):
             at = beats[i] if i < len(beats) else beats[-1] + (i - len(beats) + 1) * 0.6
             m.append({"item": item, "at": max(0.0, float(at)), "dur": 0.42, "ease": "out"})
         m.insert(0, {"item": "chapter", "at": 0.0, "dur": 0.30, "ease": "out"})
-        return m
+        return _with_callouts(sc, m)
 
     m = [{"item": "chapter", "at": 0.0, "dur": 0.30, "ease": "out"},
          {"item": "title", "at": 0.12, "dur": 0.42, "ease": "out"}]
@@ -637,6 +637,21 @@ def auto_motion(sc):
     elif form == "timeline":
         for i in range(len((sc.get("slots") or {}).get("points", []))):
             m.append({"item": f"points[{i}]", "at": 0.40 + i * 0.55, "dur": 0.42, "ease": "out"})
+    return _with_callouts(sc, m)
+
+
+def _with_callouts(sc, m):
+    """给已经有 callouts 的场景补默认入场（callout[i]）。
+
+    以前 auto_motion 从不生成 callout 条目，而 kit_chrome.draw_callouts 读不到
+    `callout[i]` 时进度缺省 0 → `if p <= 0.001: continue`，于是「按文档示例只写
+    callouts、不写 motion」的标注一个都不出现（静默绑空）。已显式写了的条目不覆盖。
+    """
+    for i in range(len(sc.get("callouts") or [])):
+        item = f"callout[{i}]"
+        if any(e.get("item") == item for e in m if isinstance(e, dict)):
+            continue
+        m.append({"item": item, "at": 0.60 + i * 0.45, "dur": 0.50, "ease": "out"})
     return m
 
 

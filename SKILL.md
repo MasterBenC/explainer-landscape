@@ -117,7 +117,7 @@ python "<skill-dir>/assets/kit/strip_chrome.py" my_spec.json --check            
 |---|---|---|
 | `bignum` 巨数字卡 | 一个数字就能说明问题：17年、$2500万、3天 | `number` / `unit` / `caption` / `note` |
 | `evidence` 双栏证据 | 有一个可展示的源：新闻页、推文、公告、官网 | `left` 画面 / `right` 截图 + `attrib` |
-| `list` 逐条揭示 | 三个并列原因、三条线索、三个疑点 | `items[]`，每条带 `at` 出现时间 |
+| `list` 逐条揭示 | 三个并列原因、三条线索、三个疑点 | `items[]`（每条 `{n, text}`）；出现时间由 `motion` 的 `items[i]` 或 `beats` 定，条目里写 `at` 渲染器不读 |
 | `timeline` 时间轴对比 | 前后变化：2024 的 $64万 → 2025 的 $600万 | `points[]`（`label` / `value`）/ `delta` |
 | `relation` 关系图 | 谁和谁有关：人脉、捐款、两届政府的人 | `center` + `satellites[]` |
 | `sources` 结尾清单 | 收尾：结论 + 全部出处（**必须是最后一镜**） | `closing` / `blocks[]` |

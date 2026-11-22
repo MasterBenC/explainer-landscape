@@ -9,6 +9,7 @@ t 缺省时给最终状态（出静帧用）。
     python render.py spec.json out/ --mp4                 # 每镜一段带动效的 mp4（剪辑用）
     python render.py spec.json out/ --video final.mp4     # 整片（转场在渲染器内合成）
     python render.py spec.json out/ --png --only s07,s12  # 只渲指定镜：改一镜不必重跑全片
+    python render.py spec.json out/ --video f.mp4 --only s01   # --video 也认 --only（只拼选中的镜）
 
 `--video` 走 render_film：逐帧合成转场，**总时长严格等于各镜 dur 之和**，
 不用 ffmpeg xfade，所以没有"每次转场吃掉一个转场时长"的问题，也不绑定 ffmpeg 版本。
@@ -17,7 +18,10 @@ t 缺省时给最终状态（出静帧用）。
 字段全表见 references/spec-schema.md；动效语法见 references/motion-spec.md。
 没有写 motion 的场景，按版式自动分配入场时间（章节牌 0s、标题 0.12s、主体 0.3s 起）。
 
-本文件只是入口：解析 CLI、加载 spec、按选项调用各层。实现分在四个子模块里——
+退出码：0 有产出；1 一个输出分支都没执行（例如只给了 --only 没给输出 flag）；
+2 参数写错（不认识的选项）。以前这两种情况都是静默退出 0，不管输出目录里有没有东西。
+
+本文件只是入口：解析 CLI、加载 spec、按选项调用各层。实现分在五个子模块里——
 
     kit_common.py   公共工具：设计 token、字体回退、动效缓动、文本排版、图片/底色缓存、档案化
     kit_chrome.py   chrome 模板：页眉 / 章节牌 / 字幕 / 来源行 / 时间码 / kicker / strap / callouts
@@ -55,6 +59,9 @@ from kit_film import (  # noqa: E402,F401
     resolve_media, spec_duration,
 )
 from kit_scene import render_scene  # noqa: E402,F401
+
+# 认识的全部选项：出现在命令行里但不在这里的，一律报错退出 2（不再是"静默什么都不渲"）
+KNOWN_FLAGS = {"--png", "--contact", "--floorplan", "--mp4", "--video", "--only"}
 
 
 def apply_spec_fonts(spec, base_dir):
@@ -99,16 +106,24 @@ def parse_fps(spec):
 
 
 def main(argv):
-    if len(argv) < 3:
+    wants_help = any(a in ("-h", "--help") for a in argv[1:])
+    if len(argv) < 3 or wants_help:
         print(__doc__)
-        return 1
+        return 0 if wants_help else 1      # --help 是正常询问，退出码 0；参数不够才算用法错
     spec_path, out_dir = argv[1], argv[2]
     spec = json.load(open(spec_path, encoding="utf-8-sig"))   # 兼容 Windows 记事本的 BOM
     base_dir = os.path.dirname(os.path.abspath(spec_path))
     resolve_media(base_dir, spec["scenes"])
     apply_spec_fonts(spec, base_dir)
     os.makedirs(out_dir, exist_ok=True)
-    flags = set(a for a in argv[3:] if a.startswith("--"))
+    flags = {a.split("=")[0] for a in argv[3:] if a.startswith("--")}
+    unknown = sorted(flags - KNOWN_FLAGS)
+    if unknown:
+        # 拼错的 flag（--jpgs / --videos）以前会静默什么都不渲再退出 0，现在直接报错
+        print(f"ERROR: 不认识的选项 {' '.join(unknown)}；"
+              f"可用：--png / --contact（旧名 --floorplan）/ --mp4 / --video <文件> / --only <id,id>",
+              file=sys.stderr)
+        return 2
     if not flags:
         flags = {"--png"}
     brand = spec.get("brand")
@@ -125,13 +140,16 @@ def main(argv):
         if missing:
             raise SystemExit(f"--only 里有不存在的镜 id：{sorted(missing)}")
     sel = [sc for sc in spec["scenes"] if only is None or sc["id"] in only]
+    did_output = False          # 至少执行过一个输出分支，否则退出码 1（不能"什么都没渲还 0"）
 
     if "--png" in flags:
         for sc in sel:
             render_scene(sc, spec_brand=brand).save(os.path.join(out_dir, f"{sc['id']}.png"))
+        did_output = True
         print(f"渲染 {len(sel)} 张终帧 -> {out_dir}" + (f"（--only {','.join(sorted(only))}）" if only else ""))
     if "--contact" in flags or "--floorplan" in flags:      # --floorplan 是 v2 文档里的旧名
         contact_sheet(spec, os.path.join(out_dir, "contact.png"))
+        did_output = True
         print(f"拼图 -> {os.path.join(out_dir, 'contact.png')}")
 
     fps = None
@@ -146,6 +164,7 @@ def main(argv):
         os.makedirs(segdir, exist_ok=True)
         for sc in sel:
             render_segment(sc, os.path.join(segdir, f"{sc['id']}.mp4"), fps=fps, brand=brand)
+        did_output = True
         print(f"渲染 {len(sel)} 段（无转场）-> {segdir}" + (f"（--only {','.join(sorted(only))}）" if only else ""))
     if "--video" in flags:
         i = argv.index("--video")
@@ -154,9 +173,19 @@ def main(argv):
             target = os.path.join(out_dir, "video.mp4")
         parent = os.path.dirname(os.path.abspath(target))
         os.makedirs(parent, exist_ok=True)
-        render_film(spec, target, fps=fps, brand=brand)
-        print(f"整片 -> {target}  （时长 {spec_duration(spec):.1f}s，转场在片内合成）")
-    print(f"总时长 {spec_duration(spec):.1f}s / {len(spec['scenes'])} 镜")
+        # --only 也要生效：只把选中的镜喂给 render_film（否则要重渲一镜却渲了整片）
+        render_film(spec, target, fps=fps, brand=brand, scenes=sel)
+        did_output = True
+        film_dur = sum(float(sc.get("dur", 4)) for sc in sel)
+        print(f"整片 -> {target}  （时长 {film_dur:.1f}s，转场在片内合成）"
+              + (f"（--only {','.join(sorted(only))}）" if only else ""))
+    if not did_output:
+        print(f"ERROR: 一个输出分支都没执行（flags={sorted(flags)}）："
+              f"要出图给 --png，出拼图给 --contact，出片段给 --mp4，出整片给 --video <文件>",
+              file=sys.stderr)
+        return 1
+    print(f"总时长 {spec_duration(spec):.1f}s / {len(spec['scenes'])} 镜" +
+          (f"（本次只渲 {len(sel)} 镜：{','.join(sorted(only))}）" if only else ""))
     return 0
 
 

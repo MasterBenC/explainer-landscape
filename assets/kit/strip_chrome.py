@@ -110,7 +110,7 @@ def main(argv: list[str]) -> int:
     a = ap.parse_args(argv[1:])
 
     src = Path(a.spec)
-    spec = json.loads(src.read_text(encoding="utf-8-sig"))   # 与 render.py 一致，兼容 BOM
+    spec = json.loads(src.read_text(encoding="utf-8-sig"))   # 兼容 Windows 记事本的 BOM（与 render / audit 一致）
     if a.check:
         return report(spec)
     if not a.out:

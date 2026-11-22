@@ -7,7 +7,14 @@
 ```bash
 python install.py                 # 复制到 ~/.agents/skills、~/.claude/skills、~/.codex/skills
 python install.py --target ~/.agents/skills
+python install.py --dry-run       # 只打印会装什么 / 会改什么，一个文件都不动
+python install.py --force         # 真的同步成源目录的样子（覆盖差异文件、删除源里没有的文件）
 ```
+
+安装默认是**安全模式**：已装目录里你自己改过的 `SKILL.md`、自己加的 spec，只要内容和源不同就
+**跳过并警告**（会列出差异文件名），不覆盖、不删除；`--link` 的目标已存在时也要求显式
+`--force`。加了 `--force` 才覆盖 / 删除，而且动每个文件之前先写一份 `.bak`（旧目录改名
+`<name>.bak`，不是 rmtree），升级失败可以直接回滚。
 
 依赖：
 
@@ -59,6 +66,8 @@ python "<skill-dir>/assets/kit/render.py" my_spec.json out/ --png --contact
 
 # 4. 自检（有静帧时加 --images 查红占比/填充率/亮度）
 python "<skill-dir>/assets/kit/audit.py" my_spec.json --images out/ --strict   # --strict：WARN 也算失败
+#    退出码：0 通过（或只有 WARN）；1 有 FAIL；2 参数写错。
+#    --images 目录不存在、或某镜的渲染图缺失，都记 FAIL——"什么都没查到"不算通过。
 
 # 5a. 出分镜片段（不含转场，给剪辑软件）
 python "<skill-dir>/assets/kit/render.py" my_spec.json out/ --mp4
@@ -112,7 +121,7 @@ python "<skill-dir>/smoke_test.py"        # 全通退出码 0；缺 Pillow 退�
 | `references/chrome-presets.md` | **两档 chrome 的字段对照**（档案档 / 极简档）与示例场景 |
 | `references/cases-2026-11.md` | 0.2.0 的改动来源：两期真实成片的 8 条用户口径 + 实测参数 |
 | `smoke_test.py` | 全链冒烟：示例 spec → 渲染 → audit → 去框 → 转场，附字体回退检查 |
-| `assets/kit/render.py` | 入口：CLI / spec 加载 / 按选项调各层（实现在下面四个子模块） |
+| `assets/kit/render.py` | 入口：CLI / spec 加载 / 按选项调各层（实现在下面五个子模块） |
 | `assets/kit/kit_common.py` | 公共工具：设计 token、字体回退、缓动、文本排版、图/底色缓存、档案化 |
 | `assets/kit/kit_chrome.py` | chrome 模板：页眉 / 章节牌 / 字幕 / 来源行 / 时间码 / kicker / strap / callouts |
 | `assets/kit/kit_forms.py` | 版式渲染器：八种 form + `FORMS` 注册表 |

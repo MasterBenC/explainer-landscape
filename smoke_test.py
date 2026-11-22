@@ -8,7 +8,7 @@
 除了"能不能跑通"，还带两条像素级回归：整幅出血图不许盖住字幕、顶部暗带按高度算。
 要验版式和参数请跑 `assets/kit/audit.py`（含 `--images --strict`）与 `references/qa-checklist.md`。
 
-各步查什么：
+五步各查什么：
   1. 依赖：Pillow 能不能 import；出 mp4 的 ffmpeg 有没有（没有只影响转场那步）。
   2. 字体：走渲染器同一条回退链（spec fonts -> 环境变量 -> 平台路径 -> fc-match），
      **回退到哪个字体要报出来**；一个 CJK 字形都没有才算失败。
@@ -310,9 +310,8 @@ def check_strip_chrome(tmp):
     out = os.path.join(tmp, "stripped_out")
     if run([sys.executable, RENDER, minimal, out + os.sep, "--png"], "极简档 render --png") is None:
         return False
-    # 撤干净后不能有残留 WARN，所以这里必须 --strict（只看退出码会把 WARN 放过）
     if run([sys.executable, AUDIT, minimal, "--strict"], "极简档 audit --strict") is None:
-        return False
+        return False        # 撤干净后不能有残留 WARN：WARN 本身不导致失败，所以必须加 --strict
     return True
 
 

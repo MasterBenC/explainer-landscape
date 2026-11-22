@@ -80,14 +80,17 @@ def apply_camera(img, t, dur, amt=0.012):
     return im.crop((left, top, left + W, top + H))
 
 
-def render_film(spec, out_path, fps=FPS, brand=None, on_progress=None):
+def render_film(spec, out_path, fps=FPS, brand=None, on_progress=None, scenes=None):
     """整片渲染：转场在渲染器内部完成（黑场 / 叠化 / 划像），一次编码，
     不依赖 ffmpeg 的 xfade 链，时间轴完全可控。
 
     转场吃掉的是前一镜的**尾部**画面（转场期间两镜同时可见），
     所以输出总时长 = sum(dur)，不会像 xfade 那样每接一次就短一段。
+
+    `scenes` 传场景子集时只渲这几镜（`--only` 用），总时长 = 子集的 Σdur；
+    不传（None）就渲 spec["scenes"] 全量，行为与以前完全一致。
     """
-    scenes = spec["scenes"]
+    scenes = spec["scenes"] if scenes is None else list(scenes)
     starts, t = [], 0.0
     for sc in scenes:
         starts.append(t)

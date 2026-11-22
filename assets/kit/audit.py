@@ -6,7 +6,9 @@
     python audit.py spec.json --strict         # WARN 也算失败
     python audit.py spec.json --images out/    # 追加像素检查（红占比 / 填充率 / 亮度）
 
-退出码：0 全部通过或只有 WARN；1 有 FAIL。
+退出码：0 全部通过或只有 WARN；1 有 FAIL；2 参数写错（未知选项 / 缺 spec 路径 / --images 没给值）。
+参数按 argparse 解析：拼错的选项（`--image` 写成单数）直接报错退出 2，不会被静默忽略；
+`--images` 的目录不存在、或该镜的渲染图缺失，都记 FAIL——「什么都没检查到」不能算通过。
 
 为什么检查这么细：`motion` 的键名写错、`ease` 值写错、`item` 拼错都**不会报错**，
 只会静默绑空、动效不出现；`disclaimer` 不写默认 true，极简档会凭空多一行免责。
@@ -14,12 +16,12 @@
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
 import sys
 
-MARGIN, RIGHT = 134, 1786
 MAX_TITLE_W = 900          # 主标题可用宽（左栏）
 # 字幕实际容量：字号 54px、可用宽 CONTENT_W-80 = 1572px → 单行约 29 个汉字，两行约 58 个。
 # 与 kit_chrome.py 的 SUB_SIZE/SUB_W/SUB_LINES 是同一组数，改一边必须改另一边。
@@ -107,6 +109,26 @@ def _motion_checks(sc, sid, form, fail, warn) -> None:
             warn(f"{tag} 没写 at，默认 0")
         if "dur" not in e:
             warn(f"{tag} 没写 dur，默认 0.4")
+
+
+def _callout_binding(sc, sid, fail) -> None:
+    """callouts 写了但没有 callout[i] 的 motion 条目 → 标注一个都不会画出来。
+
+    场景完全没写 motion 时走 auto_motion，那里会给每个 callout 补默认入场；
+    一旦写了 motion（哪怕只写了别的元素），没列进 motion 的 callout 就绑空、静默失效。
+    """
+    calls = sc.get("callouts") or []
+    if not calls:
+        return
+    entries = sc.get("motion")
+    if not isinstance(entries, list) or not entries:      # 没有 motion = 走 auto_motion，有默认值
+        return
+    bound = {str(e.get("item")) for e in entries if isinstance(e, dict)}
+    for i in range(len(calls)):
+        if f"callout[{i}]" not in bound:
+            fail(f"{sid}: callouts[{i}] 没有对应的 motion 条目 `callout[{i}]`，"
+                 f"标注不会出现（绑不上元素，静默失效）；补一条 "
+                 f"{{\"item\": \"callout[{i}]\", \"at\": 1.0, \"dur\": 0.5}} 或整场不写 motion")
 
 
 def check(spec: dict, base_dir: str = ".") -> list[tuple[str, str]]:
@@ -253,6 +275,7 @@ def check(spec: dict, base_dir: str = ".") -> list[tuple[str, str]]:
 
         # ---- 动效
         _motion_checks(sc, sid, form, fail, warn)
+        _callout_binding(sc, sid, fail)
 
         # ---- 槽位
         slots = sc.get("slots", {})
@@ -387,10 +410,10 @@ def check(spec: dict, base_dir: str = ".") -> list[tuple[str, str]]:
     total = sum(float(s.get("dur", DEFAULT_DUR)) for s in scenes)
     if len(scenes) >= 8 and total > 0:
         spm = len(scenes) / total * 60
+        # 4–14 是合规区间（数据叙事 4–8 / 混剪 8–14），区间内不再二次提示"偏慢"，
+        # 否则 4–8 会同时报"合规"和"偏慢"。只有掉出区间才 WARN。
         if not 4 <= spm <= 14:
-            warn(f"每分钟 {spm:.1f} 刀，数据叙事型区间是 4–8，混剪型是 8–14")
-        elif spm < 8:
-            warn(f"每分钟 {spm:.1f} 刀偏慢（实测基线 11 刀/分）：确认是不是有镜撑得太长")
+            warn(f"每分钟 {spm:.1f} 刀，超出 4–14 区间（数据叙事型 4–8，混剪型 8–14）")
     durs = [float(s.get("dur", DEFAULT_DUR)) for s in scenes]
     if len(durs) >= 6:
         if all(2 <= d <= 5 for d in durs[:6]):
@@ -406,13 +429,18 @@ def check(spec: dict, base_dir: str = ".") -> list[tuple[str, str]]:
             warn(f"连续 {run} 镜都是 {f}，换一种版式打断")
             break
 
-    # ---- 章节
+    # ---- 章节：pacing-spec.md 约定全片 3–5 个章节（qa-checklist 标为机器可查）
+    # 12 镜以下的短示例/片段不按整片口径卡（小示例本来就 2 个章节甚至没有章节），
+    # 免得 README / spec-schema 里的短 spec 被误报。
     uniq = []
     for c in chapter_seen:
         if not uniq or uniq[-1] != c:
             uniq.append(c)
-    if len(scenes) >= 12 and len(uniq) < 2:
-        warn("只有一个章节，4 分钟片建议 3–5 个")
+    if len(scenes) >= 12:
+        if len(uniq) < 3:
+            warn(f"全片只有 {len(uniq)} 个章节，4 分钟片建议 3–5 个")
+        elif len(uniq) > 5:
+            warn(f"全片 {len(uniq)} 个章节，超过 5 个会碎，建议 3–5 个")
 
     return out
 
@@ -442,11 +470,17 @@ def check_images(spec: dict, img_dir: str, out: list[tuple[str, str]]) -> None:
     def warn(msg):
         out.append(("WARN", msg))
 
+    # 目录本身不存在时，一镜都查不到：这是"什么都没检查到"，必须失败，不能只 WARN。
+    if not os.path.isdir(img_dir):
+        fail(f"--images {img_dir} 不是目录（不存在），像素检查一条都没跑；"
+             f"先 `render.py spec.json {img_dir} --png` 再查")
+        return
+
     for i, sc in enumerate(spec.get("scenes", []), 1):
         sid = sc.get("id", f"#{i}")
         path = os.path.join(img_dir, f"{sid}.png")
         if not os.path.exists(path):
-            warn(f"{sid}: 没有渲染图 {path}，跳过像素检查")
+            fail(f"{sid}: 没有渲染图 {path}，像素检查没跑（先 `render.py ... --png`）")
             continue
         fill, red, bright = image_stats(path)
         depth = sc.get("depth", "bg")
@@ -473,17 +507,29 @@ def check_images(spec: dict, img_dir: str, out: list[tuple[str, str]]) -> None:
             warn(f"{sid}: 平均亮度 {bright:.0f}，低于 30 说明黑得太多（有图镜目标 50–90）")
 
 
+class _ArgParser(argparse.ArgumentParser):
+    """参数写错一律 ERROR + 退出码 2：拼错的 flag 不能被静默忽略。"""
+
+    def error(self, message):
+        print(f"ERROR: {message}", file=sys.stderr)
+        print("用法：python audit.py spec.json [--strict] [--images DIR]", file=sys.stderr)
+        sys.exit(2)
+
+
 def main(argv):
     if len(argv) < 2:
         print(__doc__)
         return 1
-    spec_path = argv[1]
-    rest = argv[2:]
-    strict = "--strict" in rest
-    img_dir = None
-    if "--images" in rest:
-        k = rest.index("--images")
-        img_dir = rest[k + 1] if len(rest) > k + 1 else None
+    ap = _ArgParser(prog="audit.py", add_help=True, allow_abbrev=False,
+                    description="spec.json 自检：输出 FAIL / WARN，并给退出码")
+    ap.add_argument("spec", help="spec.json 路径")
+    ap.add_argument("--strict", action="store_true", help="WARN 也算失败")
+    ap.add_argument("--images", metavar="DIR", help="渲染图目录（必带值，检查红占比 / 填充率 / 亮度）")
+    a = ap.parse_args(argv[1:])           # 未知 flag / --images 缺值 → error() → 退出 2
+
+    spec_path = a.spec
+    strict = a.strict
+    img_dir = a.images
     spec = json.load(open(spec_path, encoding="utf-8-sig"))   # 兼容 Windows 记事本的 BOM
     base_dir = os.path.dirname(os.path.abspath(spec_path))
     results = check(spec, base_dir)
