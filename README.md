@@ -9,15 +9,44 @@ python install.py                 # 复制到 ~/.agents/skills、~/.claude/skill
 python install.py --target ~/.agents/skills
 ```
 
-依赖：Python ≥ 3.9、Pillow（**不需要 numpy**）；出 mp4 需要 ffmpeg；中文用系统字体
-（微软雅黑 / 苹方 / Noto）。没有 CJK 字体时渲染器会直接报错退出，不会静默出方框。
+依赖：
+
+| 依赖 | 版本 | 说明 |
+|---|---|---|
+| Python | ≥ 3.9 | 只用标准库 |
+| **Pillow** | **≥ 10.1** | `pip install "pillow>=10.1"`。**不需要 numpy**。低于 10.1 的版本没有 `ImageFont.load_default(size=)` 等 API，等宽兜底会抛错 |
+| ffmpeg | 任意 | 只有出 `--mp4` / `--video` 才要；转场是渲染器逐帧合成的，不走 `xfade`，不吃版本 |
+| 中文字体 | 任意 CJK 字体 | 见下 |
+
+字体回退顺序（`assets/kit/kit_common.py` 实现）：spec 顶层 `fonts` 字段 → 环境变量
+`EXPLAINER_FONT` / `EXPLAINER_FONT_BOLD` / `EXPLAINER_FONT_MONO` → 各平台候选路径 →
+`fc-match 'sans:lang=zh'` 兜底。**最后还会实测字形**（渲「中」「文」两个字比对像素）——
+路径存在但没有中文字形的字体（DejaVu 就是）会被跳过。一个可用 CJK 字体都找不到时，
+`render.py` 打 ERROR 并以退出码 2 终止，不会静默出一屏 □□□。
+
+各平台装字体：
+
+```bash
+sudo apt install fonts-noto-cjk        # Debian / Ubuntu
+sudo dnf install google-noto-cjk-fonts # Fedora / RHEL
+sudo pacman -S noto-fonts-cjk          # Arch
+brew install --cask font-noto-sans-cjk # macOS（或用系统自带苹方）
+# Windows 自带微软雅黑，无需安装
+```
+
+仓库里**不提交任何字体二进制**（`.otf/.ttf/.ttc`）。要指定字体就写 spec 的 `fonts`：
+
+```json
+{"fonts": {"regular": "/path/NotoSansCJK-Regular.ttc", "bold": "/path/NotoSansCJK-Bold.ttc"}}
+```
 
 ## 用
 
 ```bash
 # 下面命令里的 <skill-dir> = 本 skill 的安装目录；spec 和 out/ 放你自己的目录
 
-# 1. 从示例改出自己的分镜（9 镜 / 48.5s 的版式样张；极简档看 spec.minimal.sample.json）
+# 1. 从示例改出自己的分镜（9 镜 / 51.4s 的版式样张；极简档看 spec.minimal.sample.json）
+#    示例里的公司/人物/频道全是虚构的（北岭数据、周立言、远山观察），照抄不会撞到真人真事
 cp assets/examples/spec.sample.json my_spec.json
 cp -r assets/examples/media .        # 示例 spec 的图按 spec 文件所在目录解析，必须一起拷过来
 
@@ -29,7 +58,7 @@ python "<skill-dir>/assets/kit/strip_chrome.py" my_spec.json --check        # �
 python "<skill-dir>/assets/kit/render.py" my_spec.json out/ --png --contact
 
 # 4. 自检（有静帧时加 --images 查红占比/填充率/亮度）
-python "<skill-dir>/assets/kit/audit.py" my_spec.json --images out/
+python "<skill-dir>/assets/kit/audit.py" my_spec.json --images out/ --strict   # --strict：WARN 也算失败
 
 # 5a. 出分镜片段（不含转场，给剪辑软件）
 python "<skill-dir>/assets/kit/render.py" my_spec.json out/ --mp4
@@ -55,12 +84,12 @@ python "<skill-dir>/smoke_test.py"        # 全通退出码 0；缺 Pillow 退�
   "canvas": {"w": 1920, "h": 1080, "fps": 30},
   "scenes": [{
     "id": "s01", "dur": 6.0, "form": "bignum",
-    "chapter": "线索一·爆料的媒体", "brand": "Anthropic",
-    "when": "11-09", "rel": "两天前",
-    "title": "董事会：对他有信心", "kicker": "英伟达董事会声明 · 2026-11-08",
-    "subtitle": "两天前情况还比较乐观", "source": "画面：CNBC（2026-11-09）",
+    "chapter": "线索一·公告本身", "brand": "远山观察",
+    "when": "10-02", "rel": "当天",
+    "title": "董事会：计划之内", "kicker": "北岭数据董事会公告 · 2026-10-02",
+    "subtitle": "公告只有四句，没有解释", "source": "画面：年度发布回放（虚构素材 · 2026-10-02）",
     "tc": "00:04.0", "show_tc": true,
-    "slots": {"number": "17", "unit": "年", "caption": "他亲手创立、干了三十三年", "note": "董事会 11 席"},
+    "slots": {"number": "33", "unit": "年", "caption": "他亲手创立、干了三十三年", "note": "董事会 11 席"},
     "motion": [{"item": "number", "at": 0.0, "dur": 0.0, "ease": "instant"}],
     "transition": {"type": "fade", "duration": 0.5}
   }]
@@ -97,6 +126,7 @@ python "<skill-dir>/smoke_test.py"        # 全通退出码 0；缺 Pillow 退�
 | `assets/examples/media/doc-page.png` | 「公告页」占位图（photo framed / evidence 右栏） |
 | `assets/examples/media/archive-card.png` | 「旧资料卡」占位图（depth bg / fg、archival 演示） |
 | `assets/examples/out/` | 示例渲染结果（`contact.png` 是拼图） |
+| `.github/workflows/ci.yml` | CI 门禁：冒烟测试 + `audit --strict` + 脱敏检查 + 字体二进制检查 |
 
 ## 边界
 
@@ -104,6 +134,30 @@ python "<skill-dir>/smoke_test.py"        # 全通退出码 0；缺 Pillow 退�
 
 ## 变更
 
+- **0.3.2（2026-11-22）** 止血版：修渲染 P0 + 文档/实现归口，加回归与 CI 门禁。
+  - **整幅出血图不再盖住字幕/标题**：`photo` 不给 `depth` 时的整幅底图（含无图占位）改由
+    `kit_scene.render_scene` 在 chrome 之前铺层（`BACKDROPS` 注册表），以前它是在 FORMS 里画的，
+    顺序在字幕之后，字幕会被自己的配图盖掉。
+  - **顶部暗带按高度算**：`int(W * scrim)`（883px，等于 82% 画面高）→ `int(H * scrim)`（497px）。
+  - **栏内文本不再越界/重叠**：`draw_text` 新增 `max_w`，`evidence.quote` / `framed` caption /
+    `list` 条目按真实栏宽折行；引文折两行时署名自动下移（以前直接压在引文上）。
+  - **字体回退跨平台**：spec `fonts` → 环境变量 → 各平台候选路径（Windows / macOS / Debian·
+    Ubuntu / Fedora·RHEL `google-noto-cjk` / Arch `noto-cjk` / openSUSE 文泉驿）→
+    `fc-match 'sans:lang=zh'` 兜底，并**实测字形**（DejaVu 这类「文件在、没中文」的会被跳过）。
+    找不到就 ERROR + 退出码 2。依赖写明 **Pillow ≥ 10.1**；仓库不带字体二进制。
+  - **`install.py` 不再可能删源码**：目标目录名固定为 `explainer-landscape`（zip 解压带的
+    `-main` / `-0.3.2` 后缀不再传染），删除/覆盖前比对 `realpath`，相同或嵌套就跳过并提示。
+  - **示例 spec 全部脱敏**：两份示例改成分虚构公司/人物/频道（北岭数据 / 周立言 / 远山观察），
+    并修掉时间线矛盾、柱状图缺年份、1.5 秒塞爆一屏、四处重复文案；`out/` 预览图同步重渲。
+  - **口径归口**：`dur` 缺省统一 `DEFAULT_DUR=4.0`（render / kit_scene / kit_film / audit 同一常量），
+    `audit.py` 把「缺 dur」判 FAIL；字幕阈值按 54px / 1572px 实测（单行 29 字 WARN、两行 58 字 FAIL），
+    折行超限会 warn 而不是静默截断；`line` 图上限 4 → 6 点；`camera` 阈值文案统一 0.02；
+    最后一镜写非 `cut` 转场发 WARN；`strip_chrome.py` 用 `utf-8-sig` 读，撤 `source` 时把逐镜来源
+    去重并进片尾 `sources` 镜（无 sources 镜则明确警告，不再静默丢）。
+  - 文档如实化：颗粒是**按镜静态**（每镜一张、2.2% 叠加），删掉「逐帧轮换 / 门闪」的说法。
+  - 测试与门禁：`smoke_test.py` 新增整幅出血 `photo` 像素回归（字幕带近白像素数 + 顶部暗带
+    明暗对比），字体检测改走渲染器同一条回退链，豆腐块判据从 `== 7` 放宽到 `> 50`，
+    `audit.py` 全部调用加 `--strict`；新增 GitHub Actions（两档 Python × 冒烟 + 脱敏/字体二进制门禁）。
 - **0.3.1（2026-11-19）** 结构与工程：
   叙事结构只留一套口径——「五幕」是粗粒度骨架，「八段」是细分刻度，`references/pacing-spec.md`
   给出五幕 ↔ 八段对照表（旧版「七段」与那张 8 行的表不符，已改掉）；新增根目录 `smoke_test.py`

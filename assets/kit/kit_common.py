@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import math
 import os
+import shutil
+import subprocess
 import sys
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -50,43 +52,200 @@ CONTENT_W = RIGHT - MARGIN
 FPS = 30          # 兜底值：横版优先 30fps。spec 里写 canvas.fps 就以 spec 为准
 
 
+DEFAULT_DUR = 4.0  # 单镜 dur 缺省值，与 references/spec-schema.md 的「dur 默认 4s」一致
+
+
 FONT_CANDIDATES = {
-    "regular": [r"C:\Windows\Fonts\msyh.ttc", r"C:\Windows\Fonts\Deng.ttf",
-                "/System/Library/Fonts/PingFang.ttc",
-                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"],
-    "bold": [r"C:\Windows\Fonts\msyhbd.ttc", r"C:\Windows\Fonts\simhei.ttf",
-             "/System/Library/Fonts/PingFang.ttc",
-             "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"],
-    "mono": [r"C:\Windows\Fonts\consola.ttf", "/System/Library/Fonts/Menlo.ttc",
-             "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"],
+    # 顺序 = 优先级。各平台都把中文字体放在自己那一段里，跨平台一份表走完：
+    #   Windows 微软雅黑 / 等线 / 黑体 · macOS 苹方 / 冬青 / 冬青黑 · Linux 各发行版 Noto CJK / 文泉驿
+    "regular": [
+        r"C:\Windows\Fonts\msyh.ttc", r"C:\Windows\Fonts\msyh.ttf",
+        r"C:\Windows\Fonts\Deng.ttf", r"C:\Windows\Fonts\simhei.ttf",
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/Supplemental/Songti.ttc",
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        # Debian / Ubuntu：fonts-noto-cjk
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        # Fedora / RHEL：google-noto-cjk（也曾叫 google-noto-sans-cjk-fonts）
+        "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/google-noto-cjk/NotoSansCJK-VF.otf.ttc",
+        # Arch：noto-fonts-cjk
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-VF.otf.ttc",
+        # openSUSE / 其他发行版的文泉驿
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc",
+    ],
+    "bold": [
+        r"C:\Windows\Fonts\msyhbd.ttc", r"C:\Windows\Fonts\msyhbd.ttf",
+        r"C:\Windows\Fonts\simhei.ttf", r"C:\Windows\Fonts\Dengb.ttf",
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/Supplemental/Songti.ttc",
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/google-noto-cjk/NotoSansCJK-VF.otf.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-VF.otf.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc",
+    ],
+    # 等宽只用来画时间码/编号，ASCII 就够，不要求 CJK 覆盖
+    "mono": [
+        r"C:\Windows\Fonts\consola.ttf", r"C:\Windows\Fonts\consolab.ttf",
+        "/System/Library/Fonts/Menlo.ttc",
+        "/System/Library/Fonts/Supplemental/Andale Mono.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+        "/usr/share/fonts/liberation/LiberationMono-Regular.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+    ],
 }
 
 
+# spec 的 `fonts` 字段（{"regular": path, "bold": path, "mono": path}）由 render.py 在读完
+# spec 后调 set_spec_fonts() 注册，优先级高于环境变量和平台候选路径。
+FONT_ENV = {"regular": "EXPLAINER_FONT",
+            "bold": "EXPLAINER_FONT_BOLD",
+            "mono": "EXPLAINER_FONT_MONO"}
+
+_spec_fonts: dict[str, str] = {}
+
+_resolved: dict[str, str | None] = {}
+
 _cache: dict[tuple[str, int], ImageFont.FreeTypeFont] = {}
+
+
+def set_spec_fonts(fonts) -> None:
+    """注册 spec 里的 `fonts` 字段（写相对路径也行，调用方负责改成绝对路径）。
+
+    spec 换字体要立刻生效，所以顺手清掉已解析路径和字号缓存。
+    """
+    global _spec_fonts
+    _spec_fonts = {k: str(v) for k, v in (fonts or {}).items()
+                   if k in ("regular", "bold", "mono") and isinstance(v, str) and v}
+    _resolved.clear()
+    _cache.clear()
+
+
+def _fc_lookup(pattern: str) -> str | None:
+    """问 fontconfig 要一个字体文件路径（没有 fontconfig 就返回 None）。"""
+    try:
+        p = subprocess.run(["fc-match", "-f", "%{file}", pattern],
+                           capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    out = (p.stdout or "").strip()
+    return out if p.returncode == 0 and out and os.path.exists(out) else None
+
+
+def _has_cjk(path: str) -> bool:
+    """粗查这个字体到底有没有中文字形。
+
+    fontconfig 不一定听话：`fc-match 'sans:lang=zh'` 在装了 Noto CJK 的机器上也可能给出
+    一个纯拉丁字体，字体文件存在但中文全渲成 □。判据是「中」「文」两个字的掩码必须不同——
+    缺字形时两者都是同一个 .notdef 方框（smoke_test.py 用同一招做豆腐块检测）。
+    """
+    try:
+        f = ImageFont.truetype(path, 32)
+        a, b = _glyph_pixels(f, "中"), _glyph_pixels(f, "文")
+    except Exception:                                  # noqa: BLE001  字体坏了/读不了就当没有
+        return False
+    return bool(a.strip(b"\x00")) and a != b
+
+
+def _glyph_pixels(f, ch: str) -> bytes:
+    """把一个字画到 64×64 灰度画布上，返回像素字节。
+
+    不能用 font.getmask(ch).tobytes()：ImagingCore 上没有 tobytes()（Pillow 13 实测），
+    一调就 AttributeError，然后被上层当成「这字体没中文」全否掉。走 ImageDraw 最稳。
+    """
+    im = Image.new("L", (64, 64), 0)
+    ImageDraw.Draw(im).text((0, 0), ch, font=f, fill=255)
+    return im.tobytes()
+
+
+def _resolve(weight: str) -> str | None:
+    """按 spec fonts → 环境变量 → 平台候选路径 → fontconfig 兜底的顺序定一条路径。"""
+    if weight in _resolved:
+        return _resolved[weight]
+    need_cjk = weight in ("regular", "bold")
+    tries: list[str] = []
+
+    def usable(path: str | None) -> bool:
+        if not path:
+            return False
+        tries.append(path)
+        if not os.path.exists(path):
+            return False
+        return _has_cjk(path) if need_cjk else True
+
+    hit = None
+    # 1) spec fonts 字段  2) 环境变量  3) 各平台候选路径
+    cands = [_spec_fonts.get(weight), os.environ.get(FONT_ENV.get(weight, ""), "")]
+    cands += list(FONT_CANDIDATES.get(weight, []))
+    for c in cands:
+        if usable(c):
+            hit = c
+            break
+    # 4) fontconfig 兜底
+    if hit is None and shutil.which("fc-match"):
+        pattern = {"regular": "sans:lang=zh", "bold": "sans:bold:lang=zh",
+                   "mono": "monospace"}[weight]
+        for pat in (pattern, "sans-serif:lang=zh" if need_cjk else ""):
+            if not pat:
+                continue
+            c = _fc_lookup(pat)
+            if usable(c):
+                hit = c
+                break
+    _resolved[weight] = hit
+    if hit is None:
+        _tried[f"__{weight}__"] = tries
+    return hit
+
+
+_tried: dict[str, list[str]] = {}
 
 
 def font(size: int, weight: str = "regular") -> ImageFont.FreeTypeFont:
     key = (weight, size)
     if key in _cache:
         return _cache[key]
-    for path in FONT_CANDIDATES.get(weight, []):
-        if os.path.exists(path):
-            f = ImageFont.truetype(path, size)
-            _cache[key] = f
-            return f
+    path = _resolve(weight)
+    if path:
+        f = ImageFont.truetype(path, size)
+        _cache[key] = f
+        return f
     # regular / bold 找不到任何中文字体时不能静默回退：load_default 没有 CJK 字形，
     # 会渲成 □□□ 且退出码仍是 0（2026-11 评审 C5，比报错更难查）。
     if weight in ("regular", "bold"):
         sys.stderr.write(
-            "ERROR: 找不到中文字体，中文会渲成方框。\n"
-            "  试过：" + "、".join(FONT_CANDIDATES.get(weight, [])) + "\n"
-            "  Linux: apt install fonts-noto-cjk\n"
-            "  macOS: 安装「苹方」或把 NotoSansCJK 放到 /usr/share/fonts/opentype/noto/\n"
-            "  Windows: 确认 C:\\Windows\\Fonts\\msyh.ttc 存在（微软雅黑）\n")
+            "ERROR: 找不到可用的中文字体，中文会渲成方框。\n"
+            "  试过（含 spec fonts / 环境变量 / 平台路径 / fc-match）：\n    "
+            + "\n    ".join(_tried.get(f"__{weight}__", [])) + "\n"
+            "  三种给法（优先级从高到低）：\n"
+            '    1) spec 顶层写 "fonts": {"regular": "/path/xxx.ttc", "bold": "/path/xxx-bold.ttc"}\n'
+            f"    2) 环境变量 {FONT_ENV[weight]}=/path/xxx.ttc\n"
+            "    3) 装系统字体：Debian/Ubuntu `apt install fonts-noto-cjk`；"
+            "Fedora `dnf install google-noto-cjk-fonts`；Arch `pacman -S noto-fonts-cjk`\n"
+            "  macOS: 安装「苹方」（自带）；Windows: 确认 C:\\Windows\\Fonts\\msyh.ttc 存在\n")
         raise SystemExit(2)
     f = ImageFont.load_default(size)
     _cache[key] = f
     return f
+
+
+def font_report() -> dict[str, str | None]:
+    """每个字重最终解析到的字体文件（None = 没解析到，mono 会退到 Pillow 内置）。
+
+    smoke_test.py 用它把「到底回退到了哪个字体」如实打出来。以前只查候选路径存不存在，
+    会出现「路径在、字形没有」的假通过——DejaVu 就是这种：文件在，中文全是 □。
+    """
+    return {w: _resolve(w) for w in ("regular", "bold", "mono")}
 
 
 # ---------------------------------------------------------------- 动效工具
@@ -185,7 +344,12 @@ _GRAIN = {}
 
 
 def grain_tiles(n=6, size=(W, H)):
-    """预生成几张胶片颗粒，逐帧轮换用——这是"档案感"和持续微动的来源。"""
+    """预生成几张胶片颗粒图（n 张）。
+
+    注意：调用方 archival() 按镜头 id 固定取其中一张（`tiles[seed % len(tiles)]`），
+    缓存键也是镜 id，所以**颗粒是按镜静态的**，不随帧轮换、也没有门闪抖动——
+    "档案感"来自这张固定颗粒图叠 2.2% 的透明度，不是逐帧噪点。
+    """
     if n in _GRAIN:
         return _GRAIN[n]
     import random
@@ -203,7 +367,7 @@ def grain_tiles(n=6, size=(W, H)):
 
 
 def archival(img, sc, t, seed=0):
-    """档案化处理：去饱和 → 暖调 → 压暗角 → 颗粒 → 轻微门 liner 抖动。"""
+    """档案化处理：去饱和 → 暖调 → 压暗角 → 叠一张按镜固定的颗粒（不逐帧轮换、无门闪）。"""
     p = sc.get("archival") if isinstance(sc.get("archival"), dict) else {}
     desat = float(p.get("desat", 0.62))
     warm = float(p.get("warm", 1.0))
@@ -317,9 +481,17 @@ def wrap(s: str, size: int, max_w: float, weight: str = "regular") -> list[str]:
     return lines
 
 
-def draw_text(d, xy, s, size, color=TEXT, weight="regular", anchor="la", spacing=1.35):
+def draw_text(d, xy, s, size, color=TEXT, weight="regular", anchor="la", spacing=1.35,
+              max_w=None):
+    """画一段（可折行的）文本，返回占用高度。
+
+    max_w 是折行宽度，单位像素，**必须传真实栏宽**：双栏右栏、框内图说、分屏文字列
+    的宽度都远小于整幅 CONTENT_W，不传就会横着越过栏线压到图上（2026-11 评审 P0-3）。
+    缺省仍按整幅内容宽，保持全宽场景的老行为。
+    """
     x, y = xy
-    lines = wrap(s, size, CONTENT_W, weight) if "\n" not in s else s.split("\n")
+    limit = CONTENT_W if max_w is None else float(max_w)
+    lines = wrap(s, size, limit, weight) if "\n" not in s else s.split("\n")
     lh = int(size * spacing)
     for i, ln in enumerate(lines):
         d.text((x, y + i * lh), ln, font=font(size, weight), fill=color, anchor=anchor)
@@ -328,6 +500,34 @@ def draw_text(d, xy, s, size, color=TEXT, weight="regular", anchor="la", spacing
 
 def rrect(d, box, r=6, fill=None, outline=None, width=1):
     d.rounded_rectangle(box, radius=r, fill=fill, outline=outline, width=width)
+
+
+_WARNED: set[str] = set()
+
+
+def warn_once(key: str, msg: str) -> None:
+    """同一个问题只提醒一次。
+
+    这些提示写在各版式的绘制函数里，而绘制函数每帧都会被调一次——不去重就是一帧一条
+    刷满终端。key 用「问题 + 镜 id」，换一镜还会再提醒一次。
+    """
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    sys.stderr.write(f"WARN {msg}\n")
+
+
+def fit_text(s: str, size: int, max_w: float, weight: str = "regular") -> str:
+    """单行文本超宽就截尾加「…」。
+
+    右对齐的署名、图源这类不折行的文本用它，宁可截断也不要越出栏线（P0-3）。
+    """
+    if not s or text_w(s, size, weight) <= max_w:
+        return s
+    cur = s
+    while cur and text_w(cur + "…", size, weight) > max_w:
+        cur = cur[:-1]
+    return (cur + "…") if cur else ""
 
 
 _IMG_CACHE = {}

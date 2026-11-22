@@ -39,15 +39,16 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # 允许从任�
 # 下面这批 import 同时也是对外再导出：`import render` 之后 render.render_scene /
 # render.auto_motion / render.apply_camera 等旧用法继续可用。
 from kit_common import (  # noqa: E402,F401
-    ACCENT, BG, CARD, CONTENT_W, DIM, FPS, H, LINE, MARGIN, MUTED, RIGHT, TEXT, W,
-    P, _rgb, archival, auto_motion, base_background, blend, clamp, count_value,
-    draw_backdrop, draw_text, ease_in_out, ease_out, font, grain_tiles, lift,
-    motion_map, prog, reveal_text, rrect, spring, text_w, wrap,
+    ACCENT, BG, CARD, CONTENT_W, DEFAULT_DUR, DIM, FPS, H, LINE, MARGIN, MUTED,
+    RIGHT, TEXT, W, P, _rgb, archival, auto_motion, base_background, blend, clamp,
+    count_value, draw_backdrop, draw_text, ease_in_out, ease_out, fit_text, font,
+    grain_tiles, lift, motion_map, prog, reveal_text, rrect, set_spec_fonts, spring,
+    text_w, warn_once, wrap,
 )
 from kit_chrome import draw_callouts, draw_chrome, draw_kicker_block, draw_strap  # noqa: E402,F401
 from kit_forms import (  # noqa: E402,F401
-    FORMS, form_bignum, form_chart, form_evidence, form_list, form_photo,
-    form_relation, form_sources, form_timeline,
+    BACKDROPS, FORMS, form_bignum, form_chart, form_evidence, form_list, form_photo,
+    form_relation, form_sources, form_timeline, photo_backdrop, photo_fullbleed,
 )
 from kit_film import (  # noqa: E402,F401
     _ffmpeg, apply_camera, contact_sheet, render_film, render_segment,
@@ -56,13 +57,56 @@ from kit_film import (  # noqa: E402,F401
 from kit_scene import render_scene  # noqa: E402,F401
 
 
+def apply_spec_fonts(spec, base_dir):
+    """把 spec 顶层的 `fonts` 字段喂给字体层（优先级最高，盖过环境变量和平台路径）。
+
+    相对路径按 spec 所在目录解析，这样把 spec 和字体放在同一个目录里就能跨机器复现。
+    """
+    fonts = spec.get("fonts")
+    if not fonts:
+        return
+    if not isinstance(fonts, dict):
+        raise SystemExit('spec 的 "fonts" 要写成对象，例如 {"regular": "/path/msyh.ttc"}')
+    out = {}
+    for k, v in fonts.items():
+        if k not in ("regular", "bold", "mono"):
+            raise SystemExit(f'fonts 里只认 regular / bold / mono，多了一个 "{k}"')
+        if not isinstance(v, str) or not v:
+            raise SystemExit(f'fonts.{k} 要写字体文件路径')
+        p = v if os.path.isabs(v) else os.path.normpath(os.path.join(base_dir, v))
+        if not os.path.exists(p):
+            raise SystemExit(f"fonts.{k} 指向的字体文件不存在：{p}")
+        out[k] = p
+    set_spec_fonts(out)
+
+
+def parse_fps(spec):
+    """取 spec.canvas.fps；必须是整数帧率（29.97 这种静默截成 29 会让时长对不上音轨）。"""
+    canvas_fps = (spec.get("canvas") or {}).get("fps")
+    if canvas_fps is None:
+        print(f"提示：canvas.fps 未写，按 {FPS}fps 渲染；横版默认建议 30")
+        return FPS
+    try:
+        fv = float(canvas_fps)
+    except (TypeError, ValueError):
+        raise SystemExit(f"canvas.fps 不是数字：{canvas_fps!r}")
+    if fv != int(fv) or fv <= 0:
+        raise SystemExit(
+            f"canvas.fps 只接受正整数帧率（现在写的是 {canvas_fps!r}）。"
+            "29.97 / 23.976 这类写 30 / 24，交付时另作说明——"
+            "小数帧率落整会静默改掉整片时长。")
+    return int(fv)
+
+
 def main(argv):
     if len(argv) < 3:
         print(__doc__)
         return 1
     spec_path, out_dir = argv[1], argv[2]
     spec = json.load(open(spec_path, encoding="utf-8-sig"))   # 兼容 Windows 记事本的 BOM
-    resolve_media(os.path.dirname(os.path.abspath(spec_path)), spec["scenes"])
+    base_dir = os.path.dirname(os.path.abspath(spec_path))
+    resolve_media(base_dir, spec["scenes"])
+    apply_spec_fonts(spec, base_dir)
     os.makedirs(out_dir, exist_ok=True)
     flags = set(a for a in argv[3:] if a.startswith("--"))
     if not flags:
@@ -96,10 +140,7 @@ def main(argv):
             raise SystemExit("需要 ffmpeg（出 mp4）")
         # fps 以 spec 的 canvas.fps 为准（2026-11 案例回灌：横版交 30，
         # 别再让 spec 写了 30 而渲染偷偷用 24）
-        canvas_fps = (spec.get("canvas") or {}).get("fps")
-        if canvas_fps is None:
-            print(f"提示：canvas.fps 未写，按 {FPS}fps 渲染；横版默认建议 30")
-        fps = int(canvas_fps or FPS)
+        fps = parse_fps(spec)
     if "--mp4" in flags:
         segdir = os.path.join(out_dir, "segs")
         os.makedirs(segdir, exist_ok=True)

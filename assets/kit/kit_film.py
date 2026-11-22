@@ -8,13 +8,13 @@ import subprocess
 
 from PIL import Image
 
-from kit_common import FPS, H, W, clamp
+from kit_common import DEFAULT_DUR, FPS, H, W, clamp
 from kit_scene import render_scene
 
 
 # ---------------------------------------------------------------- 输出
 def spec_duration(spec):
-    return sum(float(s.get("dur", 4)) for s in spec["scenes"])
+    return sum(float(s.get("dur", DEFAULT_DUR)) for s in spec["scenes"])
 
 
 def _ffmpeg():
@@ -36,7 +36,7 @@ def resolve_media(spec_dir, scenes):
 
 def render_segment(sc, path, fps=FPS, brand=None):
     """渲染一段带动效的 mp4（无音轨）。"""
-    dur = float(sc.get("dur", 4))
+    dur = float(sc.get("dur", DEFAULT_DUR))
     n = max(2, int(round(dur * fps)))
     w, h = W, H
     cmd = ["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
@@ -63,10 +63,11 @@ def render_segment(sc, path, fps=FPS, brand=None):
 
 
 def apply_camera(img, t, dur, amt=0.012):
-    """极缓推镜：整幅 1.000→1.025，让静止段也不是完全死帧。
+    """极缓推镜：整幅 1.000→1.000+amt，让静止段也不是完全死帧。
 
-    只走 scene 级 `camera` 字段，**默认 0（关）**——排版文字层不做缩放推拉，
-    要开就写 `"camera": 0.010~0.012`，只给成片级微推用。
+    只走 scene 级 `camera` 字段，**默认 0（关）**——排版文字层不做缩放推拉。
+    要开就写 `"camera": 0.010~0.012`，上限 0.02（超过 0.02 画面边缘会明显变软，
+    audit.py 按同一个 0.02 上限报错，两边口径一致）。
     """
     if amt <= 0:
         return img
@@ -90,7 +91,7 @@ def render_film(spec, out_path, fps=FPS, brand=None, on_progress=None):
     starts, t = [], 0.0
     for sc in scenes:
         starts.append(t)
-        t += float(sc["dur"])
+        t += float(sc.get("dur", DEFAULT_DUR))
     total = t
 
     W_, H_ = W, H
@@ -109,9 +110,9 @@ def render_film(spec, out_path, fps=FPS, brand=None, on_progress=None):
             sc = scenes[idx]
             tr = sc.get("transition") or {}
             kind, xd = tr.get("type", "cut"), float(tr.get("duration", 0) or 0)
-            end = starts[idx] + float(sc["dur"])
+            end = starts[idx] + float(sc.get("dur", DEFAULT_DUR))
             frame = render_scene(sc, t=T - starts[idx], spec_brand=brand)
-            frame = apply_camera(frame, T - starts[idx], float(sc["dur"]),
+            frame = apply_camera(frame, T - starts[idx], float(sc.get("dur", DEFAULT_DUR)),
                                  float(sc.get("camera", 0.0)))
             if kind in ("cut", None, "") or xd <= 0 or idx + 1 >= len(scenes):
                 pass
@@ -120,7 +121,8 @@ def render_film(spec, out_path, fps=FPS, brand=None, on_progress=None):
                 nxt = scenes[idx + 1]
                 nt = max(0.0, T - starts[idx + 1] + 0.001)
                 b = render_scene(nxt, t=nt, spec_brand=brand)
-                b = apply_camera(b, nt, float(nxt["dur"]), float(nxt.get("camera", 0.0)))
+                b = apply_camera(b, nt, float(nxt.get("dur", DEFAULT_DUR)),
+                                 float(nxt.get("camera", 0.0)))
                 if kind == "dissolve":
                     frame = Image.blend(frame, b, p2)
                 elif kind in ("fade", "blur"):

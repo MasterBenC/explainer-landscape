@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: smoke_test (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: 装依赖（Pillow ≥ 10.1 + 中文字体 + ffmpeg）
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk ffmpeg
+          python -m pip install --upgrade pip
+          python -m pip install "pillow>=10.1"
+
+      - name: 字体就位（fc-match 兜底那一档也依赖它）
+        run: |
+          fc-list :lang=zh | head -3
+          python -c "import PIL; print('Pillow', PIL.__version__)"
+
+      - name: 全链冒烟（渲染 + audit --strict + 整幅出血回归 + 去框 + 转场）
+        run: python smoke_test.py
+
+      - name: 两份示例 spec 都要过 audit --strict
+        run: |
+          python assets/kit/audit.py assets/examples/spec.sample.json --strict
+          python assets/kit/audit.py assets/examples/spec.minimal.sample.json --strict
+
+  guard:
+    name: 合规与仓库卫生
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 示例不许出现真实人物 / 机构 / 品牌
+        run: |
+          if grep -rnE '黄仁勋|Anthropic|纽约时报|华尔街日报' assets/ ; then
+            echo "::error::示例里还有真实人物或机构名，改成虚构的公司/人物/频道"
+            exit 1
+          fi
+          echo "assets/ 下没有真实人物或机构名"
+
+      - name: 不许提交字体二进制
+        run: |
+          if git ls-files | grep -iE '\.(ttf|otf|ttc|woff2?)$' ; then
+            echo "::error::仓库不能带字体二进制，字体靠系统装或 spec 的 fonts 字段指定"
+            exit 1
+          fi
+          echo "没有字体二进制入库"
+
+      - name: 关键文件必须存在
+        run: |
+          for f in README.md SKILL.md meta.yaml smoke_test.py install.py \
+                   assets/kit/render.py assets/kit/audit.py assets/kit/strip_chrome.py \
+                   assets/examples/spec.sample.json assets/examples/spec.minimal.sample.json ; do
+            test -f "$f" || { echo "::error::缺文件 $f"; exit 1; }
+          done
+          echo "关键文件齐全"

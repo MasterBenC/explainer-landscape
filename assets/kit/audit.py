@@ -21,8 +21,16 @@ import sys
 
 MARGIN, RIGHT = 134, 1786
 MAX_TITLE_W = 900          # 主标题可用宽（左栏）
+# 字幕实际容量：字号 54px、可用宽 CONTENT_W-80 = 1572px → 单行约 29 个汉字，两行约 58 个。
+# 与 kit_chrome.py 的 SUB_SIZE/SUB_W/SUB_LINES 是同一组数，改一边必须改另一边。
+QUOTE_CHARS = 22                                     # evidence 右栏 826px / 36px ≈ 22 字
+SUB_SIZE, SUB_LINES = 54, 2
+SUB_CAP_LINE = int((1652 - 80) // SUB_SIZE)      # 29
+SUB_CAP_TOTAL = SUB_CAP_LINE * SUB_LINES         # 58
+DEFAULT_DUR = 4.0          # 缺 dur 时的兜底（spec 里 dur 必填，这里只用于提示与累计时长）
 FORMS = {"bignum", "evidence", "list", "timeline", "relation", "sources", "photo", "chart"}
-REVEAL_LIMITS = {"items": 4, "points": 4, "satellites": 5, "data": 5}
+# points 上限按「折线图最多 6 个点」定（4 个点画不出趋势，6 个点以上线就糊了）
+REVEAL_LIMITS = {"items": 4, "points": 6, "satellites": 5, "data": 5}
 EASES = {"out", "in_out", "instant", "linear"}
 EASE_ALIASES = {"ease_out", "ease_in_out", "ease_in"}     # 写了会静默变 linear
 TRANSITIONS = {"cut", "fade", "dissolve", "wipe", "blur"}
@@ -148,7 +156,10 @@ def check(spec: dict, base_dir: str = ".") -> list[tuple[str, str]]:
         if form not in FORMS:
             fail(f"{sid}: 未知版式 {form!r}")
             continue
-        dur = float(sc.get("dur", 0))
+        if "dur" not in sc:
+            fail(f"{sid}: 没写 dur（必填，单位秒）。渲染器缺省会按 {DEFAULT_DUR}s 兜底，"
+                 f"但整条时间轴就不受控了")
+        dur = float(sc.get("dur", DEFAULT_DUR))
         if dur < 0.4:
             fail(f"{sid}: 时长 {dur}s 太短（最短 0.4s）")
         if dur > 25:
@@ -171,8 +182,14 @@ def check(spec: dict, base_dir: str = ".") -> list[tuple[str, str]]:
             warn(f"{sid}: 主标题 {cjk_len(title):.0f} 字，考虑手动断行")
 
         sub = sc.get("subtitle", "")
-        if sub and cjk_len(sub) > 44:
-            warn(f"{sid}: 字幕 {cjk_len(sub):.0f} 字，超过单行容量（约 44 字），会折成两行并挤掉免责声明")
+        if sub:
+            sl = cjk_len(sub)
+            if sl > SUB_CAP_TOTAL:
+                fail(f"{sid}: 字幕 {sl:.0f} 字，超过两行容量（{SUB_CAP_TOTAL} 字），"
+                     f"渲染时第三行起会被截掉——缩到 {SUB_CAP_LINE} 字以内或拆成两镜")
+            elif sl > SUB_CAP_LINE:
+                warn(f"{sid}: 字幕 {sl:.0f} 字，超过单行容量（{SUB_CAP_LINE} 字），"
+                     f"会折成两行并挤掉免责声明行")
 
         chapter = sc.get("chapter")
         if chapter:
@@ -217,7 +234,8 @@ def check(spec: dict, base_dir: str = ".") -> list[tuple[str, str]]:
                 fail(f"{sid}: camera={sc.get('camera')!r} 不是数字")
                 cam = 0.0
             if cam > 0.02:
-                fail(f"{sid}: camera={cam} 超过 0.012，重采样会抖（这是全幅微推，不是 Ken Burns）")
+                fail(f"{sid}: camera={cam} 超过上限 0.02，重采样会抖（这是全幅微推，不是 Ken Burns；"
+                     f"推荐 0.010–0.012）")
         if sc.get("clock") is not None and not sc.get("strap"):
             warn(f"{sid}: 写了 clock 但没有 strap，时间戳不会画（它挂在横条右端）")
 
@@ -267,6 +285,12 @@ def check(spec: dict, base_dir: str = ".") -> list[tuple[str, str]]:
                 fail(f"{sid}: evidence 右侧截图不存在：{slots.get('right')}")
             if slots.get("quote") and not slots.get("attrib"):
                 fail(f"{sid}: evidence 有 quote 但没有 attrib（引文必须有机构·日期）")
+            q = slots.get("quote")
+            if isinstance(q, str) and cjk_len(q) > QUOTE_CHARS:
+                # 右栏 826px / 36px ≈ 22 个字；超了渲染时只画首行加省略号（并打 WARN）。
+                # 在这里拦一道，省得等到出图才发现引文被截。
+                warn(f"{sid}: 引文约 {cjk_len(q)} 字，右栏一行只放得下约 {QUOTE_CHARS} 字，"
+                     f"渲染时会被截尾——请缩短引文或拆镜")
         if form == "list":
             if not slots.get("items"):
                 fail(f"{sid}: list 没有 items")
@@ -340,6 +364,14 @@ def check(spec: dict, base_dir: str = ".") -> list[tuple[str, str]]:
             if not c.get("text"):
                 warn(f"{sid}: callouts[{k}] 没有 text")
 
+    # ---- 最后一镜写 transition：片尾之后没有下一镜，转场只会把最后一帧拖成黑/糊
+    if scenes and scenes[-1].get("transition") is not None:
+        last_tr = scenes[-1].get("transition")
+        last_kind = last_tr.get("type", "cut") if isinstance(last_tr, dict) else last_tr
+        if last_kind != "cut":
+            warn(f"{scenes[-1].get('id', '最后一镜')}: 最后一镜写了 transition={last_kind!r}，"
+                 f"但片尾没有下一镜接——这一段只会让画面停在半截转场上，建议删掉")
+
     # ---- 结构：来源页必须是最后一镜
     src_idx = [i for i, s in enumerate(scenes) if s.get("form") == "sources"]
     if not src_idx:
@@ -352,14 +384,14 @@ def check(spec: dict, base_dir: str = ".") -> list[tuple[str, str]]:
             warn("最后一镜不是 sources：片尾没有来源清单")
 
     # ---- 节奏
-    total = sum(float(s.get("dur", 0)) for s in scenes)
+    total = sum(float(s.get("dur", DEFAULT_DUR)) for s in scenes)
     if len(scenes) >= 8 and total > 0:
         spm = len(scenes) / total * 60
         if not 4 <= spm <= 14:
             warn(f"每分钟 {spm:.1f} 刀，数据叙事型区间是 4–8，混剪型是 8–14")
         elif spm < 8:
             warn(f"每分钟 {spm:.1f} 刀偏慢（实测基线 11 刀/分）：确认是不是有镜撑得太长")
-    durs = [float(s.get("dur", 0)) for s in scenes]
+    durs = [float(s.get("dur", DEFAULT_DUR)) for s in scenes]
     if len(durs) >= 6:
         if all(2 <= d <= 5 for d in durs[:6]):
             warn("连续 6 镜都在 2–5s，节奏会平；插一镜 <2s 或 >10s")
@@ -461,7 +493,7 @@ def main(argv):
         print(f"{level:4} {msg}")
     fails = sum(1 for lv, _ in results if lv == "FAIL")
     warns = sum(1 for lv, _ in results if lv == "WARN")
-    total = sum(float(s.get("dur", 0)) for s in spec.get("scenes", []))
+    total = sum(float(s.get("dur", DEFAULT_DUR)) for s in spec.get("scenes", []))
     print(f"\n{len(spec.get('scenes', []))} 镜 / {total:.1f}s / FAIL {fails} / WARN {warns}")
     if fails or (strict and warns):
         return 1

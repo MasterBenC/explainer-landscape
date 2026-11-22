@@ -8,10 +8,10 @@ from PIL import Image, ImageDraw, ImageFilter
 
 from kit_chrome import draw_callouts, draw_chrome, draw_kicker_block, draw_strap
 from kit_common import (
-    W, H, P, _IMG_CACHE, _load, _paste, archival, base_background, draw_backdrop,
-    ease_out, motion_map,
+    DEFAULT_DUR, W, H, P, _IMG_CACHE, _load, _paste, archival, base_background,
+    draw_backdrop, ease_out, motion_map,
 )
-from kit_forms import FORMS
+from kit_forms import BACKDROPS, FORMS
 
 
 def render_scene(sc, t=None, spec_brand=None):
@@ -21,7 +21,7 @@ def render_scene(sc, t=None, spec_brand=None):
     mm = motion_map(sc)
     if t is None:
         t = 999.0
-    dur = float(sc.get("dur", 6))
+    dur = float(sc.get("dur", DEFAULT_DUR))
 
     bg_path = sc.get("bg")
     depth = sc.get("depth", "bg")
@@ -98,6 +98,12 @@ def render_scene(sc, t=None, spec_brand=None):
                          box[1] + (bh - (box[3] - box[1])) // 2 - 10))
         d1 = ImageDraw.Draw(img)
         d1.rectangle(box, outline=(120, 120, 120), width=1)
+
+    # 底图层（整幅出血的图片镜在这里铺）必须在 chrome 之前：否则字幕、章节牌、
+    # 标题块会被这一镜自己的配图盖掉（2026-11 评审 P0-1）。
+    bd = BACKDROPS.get(sc.get("form") or "")
+    if bd is not None:
+        bd(img, sc, t, mm)
 
     draw_chrome(img, sc, t, mm)
     draw_kicker_block(img, sc, t, mm)

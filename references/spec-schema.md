@@ -12,13 +12,14 @@
 | `brand` | string | — | 全局品牌词；**只画在有 `chapter` 的镜头上**，极简档要删 |
 | `scenes` | array | — | 必填，至少一镜 |
 | `chrome` | string | — | `full` / `minimal` / `bare`。渲染器不读，`strip_chrome.py` 写入、`audit.py` 用它判断极简档规则 |
+| `fonts` | object | — | `{"regular": path, "bold": path, "mono": path}`，优先级最高的一档字体来源（高于环境变量与平台候选路径）。只写要覆盖的字重即可 |
 
 ## 场景公共字段
 
 | 键 | 类型 | 默认 | 说明 |
 |---|---|---|---|
 | `id` | string | — | **必填**。输出文件名 `{id}.png`、颗粒种子、`fg` 缓存键 |
-| `dur` | number | 4 | 本镜秒数。`--video` 的总时长 = Σdur |
+| `dur` | number | 4（**建议显式写**） | 本镜秒数。`--video` 的总时长 = Σdur。缺省值在 `kit_common.DEFAULT_DUR`，render / kit_scene / kit_film / audit 共用同一常量；`audit.py` 把「缺 `dur`」判 **FAIL**（旧版静默按 4s 算，`t` 一错就全线错位） |
 | `form` | string | — | **必填**：`bignum` / `evidence` / `list` / `timeline` / `relation` / `sources` / `chart` / `photo` |
 | `t` | number | — | 只给人看的时间轴刻度；`audit.py` 会检查它和 Σdur 是否一致 |
 | `transition` | object | `{"type":"cut"}` | `{"type": ..., "duration": ...}`，见下 |
@@ -80,7 +81,7 @@
 |---|---|---|---|
 | `left` | — | path | 左侧画面；缺省画占位框 |
 | `right` | — | path | 右侧截图（建议给）；缺省画占位框 |
-| `quote` | — | string | 引文（36px，y=780） |
+| `quote` | — | string | 引文（36px，y=780）。**一行放得下约 22 字**（右栏 826px）：超了渲染时只画首行加省略号并打 WARN，`audit.py` 也会提前 WARN——引文要长就拆镜，别指望折行 |
 | `attrib` | 有 quote 时必填 | string | 机构 · 日期（22px） |
 
 ### `list` 逐条揭示
@@ -153,4 +154,8 @@
 9. `clock` 没有 `strap` 就不画；`tc` 没有 `show_tc` 也不画。
 10. `sources` 必须在最后；`transition.duration` 必须小于本镜 `dur`。
 
-跑 `python "<skill-dir>/assets/kit/audit.py" spec.json`（有静帧加 `--images out/`）能抓掉上面 10 条里的 8 条。
+11. `dur` 别省。`audit.py` 对「缺 `dur`」直接判 FAIL；同理 `t` 与 Σdur 误差 > 0.05s 会 WARN。
+12. 字幕一行 ~29 字、最多两行（54px / 1572px 可用宽）。超一行 WARN、超两行 FAIL —— 别再指望自动缩字。
+
+跑 `python "<skill-dir>/assets/kit/audit.py" spec.json --strict`（有静帧加 `--images out/`）能抓掉上面这些里的绝大部分；
+`--strict` 把 WARN 也当失败，CI 里应该用它。

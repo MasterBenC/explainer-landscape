@@ -14,6 +14,20 @@ import sys
 
 SKIP = {"__pycache__", ".git", "out"}
 
+# 目标目录名固定，不跟着源码目录名走：从 GitHub zip 解出来的目录常叫
+# explainer-landscape-main（或带 -0.3.2 后缀），跟着走会在 skills 里留一堆版本尾巴，
+# agent 侧按名字找 skill 时就找不到。源目录名再乱，装进去的始终是 explainer-landscape。
+SKILL_NAME = "explainer-landscape"
+
+
+def _same(a: str, b: str) -> bool:
+    return os.path.realpath(a) == os.path.realpath(b)
+
+
+def _nested(a: str, b: str) -> bool:
+    ra, rb = os.path.realpath(a), os.path.realpath(b)
+    return ra.startswith(rb + os.sep) or rb.startswith(ra + os.sep)
+
 
 def default_targets() -> list[str]:
     home = os.path.expanduser("~")
@@ -77,14 +91,26 @@ def main() -> int:
         print("没找到 skills 目录，用 --target 指定")
         return 1
 
-    name = os.path.basename(src)
+    name = SKILL_NAME
     for t in targets:
         t = os.path.expanduser(t)
         os.makedirs(t, exist_ok=True)
         dst = os.path.join(t, name)
+        # 已经站在安装位里跑 install.py（很常见：装过一次之后又从 skill 目录跑一遍），
+        # dst 就是 src 本身。这时 sync_tree/rmtree 会把源码当「多余文件」删掉——直接跳过。
+        if _same(src, dst):
+            print(f"跳过 {dst}：这就是源码目录本身，再同步会把源码删掉")
+            continue
+        if _nested(src, dst):
+            print(f"跳过 {dst}：目标和源码目录互相嵌套（{src} / {dst}），先手动挪开")
+            continue
         if args.link:
             if os.path.islink(dst) or os.path.exists(dst):
-                os.remove(dst) if os.path.islink(dst) else shutil.rmtree(dst)
+                if os.path.islink(dst):
+                    os.remove(dst)
+                else:
+                    print(f"  {dst} 是实体目录，先删掉再软链（内容会丢）")
+                    shutil.rmtree(dst)
             os.symlink(src, dst, target_is_directory=True)
             print(f"link {dst} -> {src}")
         else:

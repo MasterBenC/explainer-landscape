@@ -25,9 +25,15 @@ ffmpeg -version | head -1                                  # 只有出 mp4 才�
 fc-list :lang=zh | head -3                                 # Linux 必查，空 = 中文渲成豆腐块
 ```
 
-- 缺 Pillow：`pip install pillow`。**不需要 numpy**，所有检查都是纯 PIL。
-- Linux 缺中文字体：`apt install fonts-noto-cjk`。找不到任何 CJK 字体时 `render.py` 会打
-  ERROR 并以退出码 2 终止（不会静默出一屏 □□□ 还报成功）。
+- 缺 Pillow：`pip install "pillow>=10.1"`（**≥ 10.1**：`ImageFont.load_default(size=)` 等 API 要它）。
+  **不需要 numpy**，所有检查都是纯 PIL。
+- 缺中文字体：Debian/Ubuntu `apt install fonts-noto-cjk`；Fedora `dnf install google-noto-cjk-fonts`；
+  Arch `pacman -S noto-fonts-cjk`；macOS 自带苹方；Windows 自带微软雅黑。
+  也可以自己指定：spec 顶层写 `"fonts": {"regular": ..., "bold": ..., "mono": ...}`，
+  或设环境变量 `EXPLAINER_FONT` / `EXPLAINER_FONT_BOLD` / `EXPLAINER_FONT_MONO`。
+  回退链还会**实测字形**（路径在但没有中文字形的字体直接跳过），一个可用 CJK 字体都找不到时
+  `render.py` 打 ERROR 并以退出码 2 终止（不会静默出一屏 □□□ 还报成功）。
+- 仓库不提交字体二进制（`.otf/.ttf/.ttc`），字体靠系统或 spec 指定。
 - `--video` 对 ffmpeg 版本没有特殊要求：转场是渲染器逐帧合成的，不走 `xfade` 滤镜。
 - spec 存 UTF-8 即可；Windows 记事本写的 BOM 也能读（`utf-8-sig`）。
 
@@ -125,7 +131,7 @@ python "<skill-dir>/assets/kit/strip_chrome.py" my_spec.json --check            
 | 能力 | 用法 | 为什么 |
 |---|---|---|
 | **深度交替** | `depth: "bg"` 图铺满 / `depth: "fg"` 图做前景卡浮起，两种交替（还有 `split` 左文右图） | 全片一个密度会显得单调；实测 bg 填充 0.81–0.92、fg 0.31–0.34 |
-| **档案化** | `archival: {desat, warm, dark}` + 颗粒 + 门闪，只作用在图片层 | "旧"要旧在素材，字必须锐利；这是历史感的来源 |
+| **档案化** | `archival: {desat, warm, dark}` + 一张按镜固定的颗粒（2.2% 叠加），只作用在图片层 | "旧"要旧在素材，字必须锐利；这是历史感的来源 |
 | **常驻页眉** | `label_left` / `label_right` | 参考片的识别元素，全程在 |
 | **下三分之一横条** | `strap` / `strap_tab` / `clock` | 一屏一个事实，横条只写这一屏在讲什么 |
 | **证据标注** | `callouts: [{x,y,dx,dy,text}]` | 图片来源要指得出来，引线先长、标签后出 |

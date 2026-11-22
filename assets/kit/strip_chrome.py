@@ -25,7 +25,46 @@ CHROME_KEYS = ("label_left", "label_right", "when", "rel", "source", "tc", "show
                "brand", "strap", "strap_tab", "clock")
 
 
+def collect_sources(spec: dict) -> list[str]:
+    """把逐镜 `source` 按出现顺序去重收起来（切档前调用，撤之前先记住）。"""
+    seen: list[str] = []
+    for sc in spec.get("scenes", []):
+        s = sc.get("source")
+        if isinstance(s, str) and s.strip() and s.strip() not in seen:
+            seen.append(s.strip())
+    return seen
+
+
+def merge_sources_into(spec: dict, dropped: list[str]) -> tuple[int, str]:
+    """把被撤掉的逐镜来源并进片尾 sources 镜，返回 (新增条数, 人话状态)。
+
+    以前切极简档是直接 `del sc["source"]`，字幕带干净了，但全片的出处也跟着消失——
+    片尾来源页就成了半张假清单。现在默认并进去重汇总，并到哪一镜会明说。
+    """
+    if not dropped:
+        return 0, "没有逐镜 source 要搬"
+    idx = [i for i, sc in enumerate(spec.get("scenes", [])) if sc.get("form") == "sources"]
+    if not idx:
+        print("警告：撤掉了 %d 条逐镜 source，但 spec 里没有 form=\"sources\" 的片尾镜，"
+              "这些出处无处安放，已丢弃：\n  - %s\n请手动补一个 sources 镜。"
+              % (len(dropped), "\n  - ".join(dropped)), file=sys.stderr)
+        return 0, "无片尾 sources 镜，来源已丢弃（见上方警告）"
+    scenes = spec["scenes"]
+    tgt = scenes[idx[-1]]
+    slots = dict(tgt.get("slots") or {})
+    blocks = [dict(b) for b in (slots.get("blocks") or [])]
+    existing = "\n".join(ln for b in blocks for ln in (b.get("lines") or []))
+    extra = [s for s in dropped if s not in existing]
+    if not extra:
+        return 0, "片尾 sources 已包含这些来源，无需追加"
+    blocks.append({"title": "逐镜来源", "lines": extra})
+    slots["blocks"] = blocks
+    tgt["slots"] = slots
+    return len(extra), f"来源已并入最后一镜 {tgt.get('id')}（新增 {len(extra)} 条）"
+
+
 def strip(spec: dict, *, drop_chapter: bool) -> dict:
+    dropped = collect_sources(spec)                           # 撤之前先记住
     out = {k: v for k, v in spec.items() if k != "brand"}      # spec 级 brand 也要撤
     scenes = []
     for sc in spec.get("scenes", []):
@@ -36,6 +75,9 @@ def strip(spec: dict, *, drop_chapter: bool) -> dict:
         scenes.append(sc)
     out["scenes"] = scenes
     out["chrome"] = "bare" if drop_chapter else "minimal"      # 只是标记，渲染器不读
+    n, note = merge_sources_into(out, dropped)
+    if dropped:
+        print(note, file=sys.stderr)
     return out
 
 
@@ -68,7 +110,7 @@ def main(argv: list[str]) -> int:
     a = ap.parse_args(argv[1:])
 
     src = Path(a.spec)
-    spec = json.loads(src.read_text(encoding="utf-8"))
+    spec = json.loads(src.read_text(encoding="utf-8-sig"))   # 与 render.py 一致，兼容 BOM
     if a.check:
         return report(spec)
     if not a.out:
